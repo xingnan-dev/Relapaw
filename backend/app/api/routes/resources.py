@@ -1,0 +1,135 @@
+from datetime import UTC
+
+from fastapi import APIRouter, Depends
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.api.deps import require_episode, require_pet
+from app.api.errors import APIError
+from app.db.session import get_db
+from app.models import LifeEvent, ObservationPlan, PetBaseline, VeterinaryEscalation
+from app.schemas.resources import (
+    LifeEventCreate,
+    LifeEventRead,
+    ObservationPlanCreate,
+    ObservationPlanRead,
+    ObservationPlanUpdate,
+    PetBaselineRead,
+    PetBaselineUpsert,
+    VeterinaryEscalationCreate,
+    VeterinaryEscalationRead,
+    VeterinaryEscalationUpdate,
+)
+
+router = APIRouter(tags=["longitudinal-memory"])
+
+
+def _comparable_utc(value):
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+@router.get("/pets/{pet_id}/baseline", response_model=PetBaselineRead)
+def get_baseline(pet_id: int, db: Session = Depends(get_db)):
+    require_pet(db, pet_id)
+    baseline = db.scalar(select(PetBaseline).where(PetBaseline.pet_id == pet_id))
+    if baseline is None:
+        raise APIError(404, "PET_BASELINE_NOT_FOUND", "Pet baseline not found")
+    return baseline
+
+
+@router.put("/pets/{pet_id}/baseline", response_model=PetBaselineRead)
+def upsert_baseline(pet_id: int, payload: PetBaselineUpsert, db: Session = Depends(get_db)):
+    require_pet(db, pet_id)
+    baseline = db.scalar(select(PetBaseline).where(PetBaseline.pet_id == pet_id))
+    if baseline is None:
+        baseline = PetBaseline(pet_id=pet_id, **payload.model_dump())
+        db.add(baseline)
+    else:
+        for key, value in payload.model_dump().items():
+            setattr(baseline, key, value)
+    db.commit()
+    db.refresh(baseline)
+    return baseline
+
+
+@router.get("/pets/{pet_id}/life-events", response_model=list[LifeEventRead])
+def list_life_events(pet_id: int, db: Session = Depends(get_db)):
+    require_pet(db, pet_id)
+    return list(db.scalars(select(LifeEvent).where(LifeEvent.pet_id == pet_id).order_by(LifeEvent.happened_at.desc(), LifeEvent.id.desc())).all())
+
+
+@router.post("/pets/{pet_id}/life-events", response_model=LifeEventRead, status_code=201)
+def create_life_event(pet_id: int, payload: LifeEventCreate, db: Session = Depends(get_db)):
+    require_pet(db, pet_id)
+    event = LifeEvent(pet_id=pet_id, **payload.model_dump())
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+@router.get("/pets/{pet_id}/observation-plans", response_model=list[ObservationPlanRead])
+def list_observation_plans(pet_id: int, db: Session = Depends(get_db)):
+    require_pet(db, pet_id)
+    return list(db.scalars(select(ObservationPlan).where(ObservationPlan.pet_id == pet_id).order_by(ObservationPlan.id.desc())).all())
+
+
+@router.post("/pets/{pet_id}/observation-plans", response_model=ObservationPlanRead, status_code=201)
+def create_observation_plan(pet_id: int, payload: ObservationPlanCreate, db: Session = Depends(get_db)):
+    require_pet(db, pet_id)
+    plan = ObservationPlan(pet_id=pet_id, **payload.model_dump())
+    db.add(plan)
+    db.commit()
+    db.refresh(plan)
+    return plan
+
+
+@router.patch("/observation-plans/{plan_id}", response_model=ObservationPlanRead)
+def update_observation_plan(plan_id: int, payload: ObservationPlanUpdate, db: Session = Depends(get_db)):
+    plan = db.get(ObservationPlan, plan_id)
+    if plan is None:
+        raise APIError(404, "OBSERVATION_PLAN_NOT_FOUND", "Observation plan not found")
+    data = payload.model_dump(exclude_unset=True)
+    effective_start = data.get("start_at", plan.start_at)
+    effective_end = data.get("end_at", plan.end_at)
+    comparable_start = _comparable_utc(effective_start)
+    comparable_end = _comparable_utc(effective_end)
+    if comparable_start and comparable_end and comparable_end < comparable_start:
+        raise APIError(422, "INVALID_PLAN_DATES", "end_at must be on or after start_at")
+    for key, value in data.items():
+        setattr(plan, key, value)
+    db.commit()
+    db.refresh(plan)
+    return plan
+
+
+@router.get("/episodes/{episode_id}/veterinary-escalations", response_model=list[VeterinaryEscalationRead])
+def list_veterinary_escalations(episode_id: int, db: Session = Depends(get_db)):
+    require_episode(db, episode_id)
+    return list(db.scalars(select(VeterinaryEscalation).where(VeterinaryEscalation.episode_id == episode_id).order_by(VeterinaryEscalation.id.desc())).all())
+
+
+@router.post("/episodes/{episode_id}/veterinary-escalations", response_model=VeterinaryEscalationRead, status_code=201)
+def create_veterinary_escalation(episode_id: int, payload: VeterinaryEscalationCreate, db: Session = Depends(get_db)):
+    require_episode(db, episode_id)
+    escalation = VeterinaryEscalation(episode_id=episode_id, **payload.model_dump(mode="json"))
+    db.add(escalation)
+    db.commit()
+    db.refresh(escalation)
+    return escalation
+
+
+@router.patch("/veterinary-escalations/{escalation_id}", response_model=VeterinaryEscalationRead)
+def update_veterinary_escalation(escalation_id: int, payload: VeterinaryEscalationUpdate, db: Session = Depends(get_db)):
+    escalation = db.get(VeterinaryEscalation, escalation_id)
+    if escalation is None:
+        raise APIError(404, "VETERINARY_ESCALATION_NOT_FOUND", "Veterinary escalation not found")
+    for key, value in payload.model_dump(exclude_unset=True, mode="json").items():
+        setattr(escalation, key, value)
+    db.commit()
+    db.refresh(escalation)
+    return escalation

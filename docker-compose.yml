@@ -1,0 +1,14 @@
+services:
+  backend:
+    build: ./backend
+    profiles: ["future"]
+    ports:
+      - "8000:8000"
+  frontend:
+    build: ./frontend
+    profiles: ["future"]
+    ports:
+      - "5173:5173"
+
+# Phase 0 placeholder only. Dockerfiles and production deployment are intentionally deferred.
+
