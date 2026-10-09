@@ -9,6 +9,8 @@ from app.api.errors import APIError
 from app.schemas.episode import TimelinePage
 from app.schemas.pet import PetCreate, PetRead, PetUpdate
 from app.services.timeline import get_pet_timeline
+from app.schemas.time import require_aware_utc
+from datetime import datetime
 
 router = APIRouter(prefix="/pets", tags=["pets"])
 
@@ -52,10 +54,21 @@ def pet_timeline(
     pet_id: int,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    from_at: datetime | None = Query(default=None, alias="from"),
+    to_at: datetime | None = Query(default=None, alias="to"),
+    episode_type: str | None = Query(default=None, min_length=1, max_length=100),
+    plan_id: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ):
     require_pet(db, pet_id)
-    items, total = get_pet_timeline(db, pet_id, page, page_size)
+    try:
+        from_at = require_aware_utc(from_at)
+        to_at = require_aware_utc(to_at)
+    except ValueError as exc:
+        raise APIError(422, "TIMEZONE_REQUIRED", str(exc)) from exc
+    if from_at and to_at and to_at < from_at:
+        raise APIError(422, "INVALID_TIMELINE_RANGE", "to must be on or after from")
+    items, total = get_pet_timeline(db, pet_id, page, page_size, from_at, to_at, episode_type, plan_id)
     return TimelinePage(
         items=items,
         total=total,

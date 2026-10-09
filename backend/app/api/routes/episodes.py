@@ -2,18 +2,69 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_episode, require_pet
+from app.api.errors import APIError
 from app.db.session import get_db
 from app.models import Episode, Observation, OwnerInterpretation
 from app.schemas.episode import (
+    CompleteEpisodeCreate,
     EpisodeCreate,
     EpisodeRead,
+    EpisodeUpdate,
     ObservationCreate,
     ObservationRead,
     OwnerInterpretationCreate,
     OwnerInterpretationRead,
 )
+from app.services.records import create_complete_episode, update_episode_aggregate
+from app.services.timeline import get_episode_detail
+from app.services.follow_ups import episode_has_follow_ups
 
 router = APIRouter(prefix="/episodes", tags=["episodes"])
+
+
+@router.get("/{episode_id}", response_model=EpisodeRead)
+def get_episode(episode_id: int, db: Session = Depends(get_db)):
+    episode = get_episode_detail(db, episode_id)
+    if episode is None:
+        raise APIError(404, "EPISODE_NOT_FOUND", "Episode not found")
+    return episode
+
+
+@router.put("/{episode_id}", response_model=EpisodeRead)
+def update_episode(episode_id: int, payload: EpisodeUpdate, db: Session = Depends(get_db)):
+    episode = require_episode(db, episode_id)
+    try:
+        updated = update_episode_aggregate(db, episode, payload)
+        db.commit()
+        return updated
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.delete("/{episode_id}", status_code=204)
+def delete_episode(episode_id: int, db: Session = Depends(get_db)):
+    episode = require_episode(db, episode_id)
+    if episode_has_follow_ups(db, episode_id):
+        raise APIError(409, "EPISODE_HAS_FOLLOW_UPS", "Episode has follow-up history and cannot be deleted")
+    try:
+        db.delete(episode)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.post("/complete", response_model=EpisodeRead, status_code=201)
+def create_complete_episode_route(payload: CompleteEpisodeCreate, db: Session = Depends(get_db)):
+    require_pet(db, payload.pet_id)
+    try:
+        episode = create_complete_episode(db, payload)
+        db.commit()
+        return episode
+    except Exception:
+        db.rollback()
+        raise
 
 
 @router.post("", response_model=EpisodeRead, status_code=201)
@@ -46,4 +97,3 @@ def add_owner_interpretation(
     db.commit()
     db.refresh(interpretation)
     return interpretation
-

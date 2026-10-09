@@ -29,3 +29,4 @@
 
 - [Phase 0（历史重建）](phase-0/README.md)
 - [Phase 0.1（当前可验证记录）](phase-0.1/README.md)
+- [Phase 1（无 AI 的结构化记录闭环）](phase-1/README.md)

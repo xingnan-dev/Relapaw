@@ -41,6 +41,14 @@ h1, h2, h3, p { overflow-wrap: anywhere; }
 .setup-page { overflow: auto; }
 .setup-page form { max-width: 600px; }
 .form-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-triple { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.form-section { margin: 18px 0; padding: 14px; border: 1px solid #d8dcd7; border-radius: 14px; }
+.form-section legend { padding: 0 6px; font-weight: 700; }
+.choice-row { display: flex; grid-template-columns: none; align-items: center; gap: 9px; margin: 8px 0; }
+.choice-row input { width: auto; flex: 0 0 auto; }
+.safety-section > p { color: #5d6962; }
+.danger-panel { margin-top: 12px; padding: 14px; border: 1px solid #c98272; border-radius: 12px; background: #fff4f1; }
+.danger-panel > strong { color: #8b2f24; }
 .photo-placeholder { margin: 16px 0; padding: 20px; text-align: center; border: 1px dashed #aeb8b1; border-radius: 14px; color: #68746d; }
 .form-error { color: #a12c2c; }
 .pet-heading, .pet-identity { display: flex; align-items: center; gap: 12px; }
@@ -74,8 +82,14 @@ h1, h2, h3, p { overflow-wrap: anywhere; }
 .timeline-summary span:first-child { display: grid; }
 .timeline time { color: #68746d; font-size: 12px; }
 .timeline-detail { display: grid; gap: 10px; margin-top: 12px; }
+.episode-panel dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0; }
+.episode-panel dt { font-weight: 700; }
+.episode-panel dd { margin: 0; }
+.panel-actions { position: sticky; bottom: 0; display: flex; gap: 8px; padding: 12px 0; background: #fbfbf8; }
+.panel-actions .primary { flex: 1; }
+.danger-button { color: #8b2f24; border-color: #c98272; background: #fff4f1; }
 .model-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .model-grid .card { margin: 0; }
 .empty-state { min-height: 55vh; display: grid; align-content: center; }
-@media (max-width: 540px) { .lens-grid, .model-grid, .form-pair { grid-template-columns: 1fr; } }
+@media (max-width: 540px) { .lens-grid, .model-grid, .form-pair, .form-triple { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }

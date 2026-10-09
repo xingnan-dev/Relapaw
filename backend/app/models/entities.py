@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, String, Text, func
+from sqlalchemy import JSON, Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -59,12 +59,27 @@ class Episode(Base):
     episode_type: Mapped[str] = mapped_column(String(100), nullable=False)
     raw_owner_input: Mapped[str] = mapped_column(Text, nullable=False)
     context: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    duration_seconds: Mapped[int | None] = mapped_column(Integer)
+    frequency_count: Mapped[int | None] = mapped_column(Integer)
+    intensity: Mapped[int | None] = mapped_column(Integer)
+    location: Mapped[str | None] = mapped_column(String(200))
+    trigger_context: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     pet: Mapped[Pet] = relationship(back_populates="episodes")
     observations: Mapped[list["Observation"]] = relationship(back_populates="episode", cascade="all, delete-orphan")
     owner_interpretations: Mapped[list["OwnerInterpretation"]] = relationship(back_populates="episode", cascade="all, delete-orphan")
     veterinary_escalations: Mapped[list["VeterinaryEscalation"]] = relationship(back_populates="episode", cascade="all, delete-orphan")
+    safety_check: Mapped["SafetyCheck | None"] = relationship(back_populates="episode", cascade="all, delete-orphan")
+    evidence_references: Mapped[list["EvidenceReference"]] = relationship(back_populates="episode", cascade="all, delete-orphan")
+    plan_links: Mapped[list["EpisodePlanLink"]] = relationship(back_populates="episode", cascade="all, delete-orphan")
+    scheduled_follow_ups: Mapped[list["EpisodeFollowUp"]] = relationship(
+        back_populates="source_episode", foreign_keys="EpisodeFollowUp.source_episode_id"
+    )
+    result_of_follow_up: Mapped["EpisodeFollowUp | None"] = relationship(
+        back_populates="result_episode", foreign_keys="EpisodeFollowUp.result_episode_id", uselist=False
+    )
 
 
 class Observation(Base):
@@ -76,6 +91,10 @@ class Observation(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     source_type: Mapped[str] = mapped_column(String(50), nullable=False)
     confidence: Mapped[float | None] = mapped_column(Float)
+    measured_value: Mapped[float | None] = mapped_column(Float)
+    unit: Mapped[str | None] = mapped_column(String(50))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     episode: Mapped[Episode] = relationship(back_populates="observations")
 
 
@@ -85,6 +104,8 @@ class OwnerInterpretation(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     episode_id: Mapped[int] = mapped_column(ForeignKey("episodes.id", ondelete="CASCADE"), index=True)
     interpretation: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     episode: Mapped[Episode] = relationship(back_populates="owner_interpretations")
 
 
@@ -110,6 +131,23 @@ class ObservationPlan(Base):
     goal: Mapped[str] = mapped_column(Text, nullable=False)
     items_to_observe: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     pet: Mapped[Pet] = relationship(back_populates="observation_plans")
+    episode_links: Mapped[list["EpisodePlanLink"]] = relationship(back_populates="plan", cascade="all, delete-orphan")
+    items: Mapped[list["ObservationPlanItem"]] = relationship(back_populates="plan", cascade="all, delete-orphan", order_by="ObservationPlanItem.sort_order")
+
+
+class ObservationPlanItem(Base):
+    __tablename__ = "observation_plan_items"
+    __table_args__ = (UniqueConstraint("plan_id", "sort_order", name="uq_plan_item_sort_order"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("observation_plans.id", ondelete="CASCADE"), index=True)
+    label: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    plan: Mapped[ObservationPlan] = relationship(back_populates="items")
 
 
 class VeterinaryEscalation(Base):
@@ -122,3 +160,69 @@ class VeterinaryEscalation(Base):
     vet_brief: Mapped[str | None] = mapped_column(Text)
     episode: Mapped[Episode] = relationship(back_populates="veterinary_escalations")
 
+
+class SafetyCheck(Base):
+    __tablename__ = "safety_checks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    episode_id: Mapped[int] = mapped_column(ForeignKey("episodes.id", ondelete="CASCADE"), unique=True)
+    result: Mapped[str] = mapped_column(String(30), nullable=False)
+    danger_signals: Mapped[list[str]] = mapped_column(JSON, default=list)
+    other_concern: Mapped[str | None] = mapped_column(Text)
+    acknowledged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    episode: Mapped[Episode] = relationship(back_populates="safety_check")
+
+
+class EvidenceReference(Base):
+    __tablename__ = "evidence_references"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    episode_id: Mapped[int] = mapped_column(ForeignKey("episodes.id", ondelete="CASCADE"), index=True)
+    source_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    source_id: Mapped[int | None] = mapped_column(Integer)
+    field_path: Mapped[str] = mapped_column(String(200), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    episode: Mapped[Episode] = relationship(back_populates="evidence_references")
+
+
+class EpisodePlanLink(Base):
+    __tablename__ = "episode_plan_links"
+    __table_args__ = (UniqueConstraint("episode_id", "plan_id", name="uq_episode_plan_link"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    episode_id: Mapped[int] = mapped_column(ForeignKey("episodes.id", ondelete="CASCADE"), index=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("observation_plans.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    episode: Mapped[Episode] = relationship(back_populates="plan_links")
+    plan: Mapped[ObservationPlan] = relationship(back_populates="episode_links")
+
+
+class EpisodeFollowUp(Base):
+    __tablename__ = "episode_follow_ups"
+    __table_args__ = (
+        CheckConstraint("result_episode_id IS NULL OR source_episode_id != result_episode_id", name="ck_follow_up_distinct_episodes"),
+        CheckConstraint(
+            "(status = 'PENDING' AND result_episode_id IS NULL AND outcome IS NULL AND completed_at IS NULL) OR "
+            "(status = 'COMPLETED' AND result_episode_id IS NOT NULL AND outcome IS NOT NULL AND completed_at IS NOT NULL) OR "
+            "(status = 'CANCELLED' AND result_episode_id IS NULL AND outcome IS NULL AND completed_at IS NULL)",
+            name="ck_follow_up_state_fields",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_episode_id: Mapped[int] = mapped_column(ForeignKey("episodes.id", ondelete="RESTRICT"), index=True)
+    result_episode_id: Mapped[int | None] = mapped_column(ForeignKey("episodes.id", ondelete="RESTRICT"), unique=True, index=True)
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    outcome: Mapped[str | None] = mapped_column(String(30))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    source_episode: Mapped[Episode] = relationship(back_populates="scheduled_follow_ups", foreign_keys=[source_episode_id])
+    result_episode: Mapped[Episode | None] = relationship(back_populates="result_of_follow_up", foreign_keys=[result_episode_id])

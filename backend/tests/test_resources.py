@@ -74,6 +74,69 @@ def test_veterinary_escalation_is_manual_structure(client, pet):
     assert invalid_status.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
+def test_veterinary_escalation_manual_lifecycle(client, pet):
+    episode = client.post(
+        "/api/v1/episodes",
+        json={
+            "pet_id": pet["id"],
+            "happened_at": "2026-03-01T08:00:00Z",
+            "episode_type": "owner_concern",
+            "raw_owner_input": "Owner manually requested veterinary follow-up",
+        },
+    ).json()
+
+    invalid_create = client.post(
+        f"/api/v1/episodes/{episode['id']}/veterinary-escalations",
+        json={"reason": "Manual check", "status": "CLOSED"},
+    )
+    assert invalid_create.status_code == 409
+    assert invalid_create.json()["error"]["code"] == "INVALID_VETERINARY_ESCALATION_TRANSITION"
+
+    created = client.post(
+        f"/api/v1/episodes/{episode['id']}/veterinary-escalations",
+        json={"reason": "Owner chose to contact a vet"},
+    )
+    assert created.status_code == 201
+    escalation_id = created.json()["id"]
+
+    shared = client.patch(
+        f"/api/v1/veterinary-escalations/{escalation_id}",
+        json={"status": "SHARED_WITH_VET", "vet_brief": "Shared by owner"},
+    )
+    assert shared.status_code == 200
+    assert shared.json()["status"] == "SHARED_WITH_VET"
+    assert shared.json()["vet_brief"] == "Shared by owner"
+
+    backwards = client.patch(
+        f"/api/v1/veterinary-escalations/{escalation_id}", json={"status": "OPEN"}
+    )
+    assert backwards.status_code == 409
+    assert backwards.json()["error"]["code"] == "INVALID_VETERINARY_ESCALATION_TRANSITION"
+
+    closed = client.patch(
+        f"/api/v1/veterinary-escalations/{escalation_id}", json={"status": "CLOSED"}
+    )
+    assert closed.status_code == 200
+    assert closed.json()["status"] == "CLOSED"
+
+    terminal = client.patch(
+        f"/api/v1/veterinary-escalations/{escalation_id}", json={"vet_brief": "Silently rewrite history"}
+    )
+    assert terminal.status_code == 409
+    assert terminal.json()["error"]["code"] == "VETERINARY_ESCALATION_CLOSED"
+
+    listed = client.get(f"/api/v1/episodes/{episode['id']}/veterinary-escalations")
+    assert listed.status_code == 200
+    assert listed.json()[0]["status"] == "CLOSED"
+    assert listed.json()[0]["vet_brief"] == "Shared by owner"
+
+
+def test_veterinary_escalation_update_missing_returns_unified_404(client):
+    response = client.patch("/api/v1/veterinary-escalations/999", json={"status": "CLOSED"})
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "VETERINARY_ESCALATION_NOT_FOUND"
+
+
 def test_naive_datetime_is_rejected(client, pet):
     response = client.post(
         "/api/v1/episodes",

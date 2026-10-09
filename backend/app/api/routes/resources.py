@@ -2,12 +2,12 @@ from datetime import UTC
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import require_episode, require_pet
 from app.api.errors import APIError
 from app.db.session import get_db
-from app.models import LifeEvent, ObservationPlan, PetBaseline, VeterinaryEscalation
+from app.models import LifeEvent, ObservationPlan, ObservationPlanItem, PetBaseline, VeterinaryEscalation
 from app.schemas.resources import (
     LifeEventCreate,
     LifeEventRead,
@@ -75,14 +75,29 @@ def create_life_event(pet_id: int, payload: LifeEventCreate, db: Session = Depen
 @router.get("/pets/{pet_id}/observation-plans", response_model=list[ObservationPlanRead])
 def list_observation_plans(pet_id: int, db: Session = Depends(get_db)):
     require_pet(db, pet_id)
-    return list(db.scalars(select(ObservationPlan).where(ObservationPlan.pet_id == pet_id).order_by(ObservationPlan.id.desc())).all())
+    return list(db.scalars(select(ObservationPlan).where(ObservationPlan.pet_id == pet_id).options(joinedload(ObservationPlan.items)).order_by(ObservationPlan.id.desc())).unique().all())
+
+
+@router.get("/observation-plans/{plan_id}", response_model=ObservationPlanRead)
+def get_observation_plan(plan_id: int, db: Session = Depends(get_db)):
+    plan = db.scalar(select(ObservationPlan).where(ObservationPlan.id == plan_id).options(joinedload(ObservationPlan.items)))
+    if plan is None:
+        raise APIError(404, "OBSERVATION_PLAN_NOT_FOUND", "Observation plan not found")
+    return plan
 
 
 @router.post("/pets/{pet_id}/observation-plans", response_model=ObservationPlanRead, status_code=201)
 def create_observation_plan(pet_id: int, payload: ObservationPlanCreate, db: Session = Depends(get_db)):
     require_pet(db, pet_id)
-    plan = ObservationPlan(pet_id=pet_id, **payload.model_dump())
+    data = payload.model_dump(exclude={"items"})
+    plan = ObservationPlan(pet_id=pet_id, **data)
     db.add(plan)
+    db.flush()
+    normalized_items = payload.items or [
+        {"label": str(item.get("label", "")).strip(), "description": item.get("description"), "is_required": item.get("is_required", True)}
+        for item in payload.items_to_observe if str(item.get("label", "")).strip()
+    ]
+    plan.items = [ObservationPlanItem(plan_id=plan.id, sort_order=index, **(item.model_dump() if hasattr(item, "model_dump") else item)) for index, item in enumerate(normalized_items)]
     db.commit()
     db.refresh(plan)
     return plan
@@ -94,6 +109,12 @@ def update_observation_plan(plan_id: int, payload: ObservationPlanUpdate, db: Se
     if plan is None:
         raise APIError(404, "OBSERVATION_PLAN_NOT_FOUND", "Observation plan not found")
     data = payload.model_dump(exclude_unset=True)
+    if plan.status in {"COMPLETED", "CANCELLED"}:
+        raise APIError(409, "OBSERVATION_PLAN_TERMINAL", "Completed or cancelled plans cannot be changed")
+    next_status = data.get("status")
+    allowed = {"DRAFT": {"ACTIVE", "CANCELLED"}, "ACTIVE": {"COMPLETED", "CANCELLED"}}
+    if next_status is not None and next_status.value not in allowed.get(plan.status, set()):
+        raise APIError(409, "INVALID_OBSERVATION_PLAN_TRANSITION", "Invalid observation plan status transition")
     effective_start = data.get("start_at", plan.start_at)
     effective_end = data.get("end_at", plan.end_at)
     comparable_start = _comparable_utc(effective_start)
@@ -116,6 +137,8 @@ def list_veterinary_escalations(episode_id: int, db: Session = Depends(get_db)):
 @router.post("/episodes/{episode_id}/veterinary-escalations", response_model=VeterinaryEscalationRead, status_code=201)
 def create_veterinary_escalation(episode_id: int, payload: VeterinaryEscalationCreate, db: Session = Depends(get_db)):
     require_episode(db, episode_id)
+    if payload.status.value != "OPEN":
+        raise APIError(409, "INVALID_VETERINARY_ESCALATION_TRANSITION", "Veterinary escalation must be created as OPEN")
     escalation = VeterinaryEscalation(episode_id=episode_id, **payload.model_dump(mode="json"))
     db.add(escalation)
     db.commit()
@@ -128,7 +151,17 @@ def update_veterinary_escalation(escalation_id: int, payload: VeterinaryEscalati
     escalation = db.get(VeterinaryEscalation, escalation_id)
     if escalation is None:
         raise APIError(404, "VETERINARY_ESCALATION_NOT_FOUND", "Veterinary escalation not found")
-    for key, value in payload.model_dump(exclude_unset=True, mode="json").items():
+    data = payload.model_dump(exclude_unset=True, mode="json")
+    if escalation.status == "CLOSED":
+        raise APIError(409, "VETERINARY_ESCALATION_CLOSED", "Closed veterinary escalations cannot be changed")
+    next_status = data.get("status")
+    allowed = {
+        "OPEN": {"SHARED_WITH_VET", "CLOSED"},
+        "SHARED_WITH_VET": {"CLOSED"},
+    }
+    if next_status is not None and next_status not in allowed.get(escalation.status, set()):
+        raise APIError(409, "INVALID_VETERINARY_ESCALATION_TRANSITION", "Invalid veterinary escalation status transition")
+    for key, value in data.items():
         setattr(escalation, key, value)
     db.commit()
     db.refresh(escalation)

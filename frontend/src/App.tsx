@@ -27,10 +27,12 @@ function AppFlow() {
 
 function MainShell({ onAddPet }: { onAddPet: () => void }) {
   const [active, setActive] = useState<Tab>("Today");
+  const [targetEpisodeId, setTargetEpisodeId] = useState<number | null>(null);
+  const openEpisode = (episodeId: number) => { setTargetEpisodeId(episodeId); setActive("Timeline"); };
   const pages = {
-    Today: <Today onAddPet={onAddPet} onUnderstand={() => setActive("Understand")} />,
-    Understand: <Understand />,
-    Timeline: <Timeline />,
+    Today: <Today onAddPet={onAddPet} onUnderstand={() => setActive("Understand")} onOpenEpisode={openEpisode} />,
+    Understand: <Understand onSaved={() => setActive("Timeline")} />,
+    Timeline: <Timeline initialEpisodeId={targetEpisodeId} onInitialEpisodeOpened={() => setTargetEpisodeId(null)} />,
     Us: <Us onAddPet={onAddPet} />,
   };
   return (

@@ -1,15 +1,51 @@
+from datetime import datetime
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models import Episode
+from app.models import Episode, EpisodePlanLink
 
 
-def get_pet_timeline(db: Session, pet_id: int, page: int, page_size: int) -> tuple[list[Episode], int]:
-    total = db.scalar(select(func.count(Episode.id)).where(Episode.pet_id == pet_id)) or 0
+EPISODE_LOADS = (
+    selectinload(Episode.observations),
+    selectinload(Episode.owner_interpretations),
+    selectinload(Episode.safety_check),
+    selectinload(Episode.evidence_references),
+    selectinload(Episode.plan_links),
+    selectinload(Episode.veterinary_escalations),
+    selectinload(Episode.scheduled_follow_ups),
+    selectinload(Episode.result_of_follow_up),
+)
+
+
+def get_episode_detail(db: Session, episode_id: int) -> Episode | None:
+    return db.scalar(select(Episode).where(Episode.id == episode_id).options(*EPISODE_LOADS))
+
+
+def get_pet_timeline(
+    db: Session,
+    pet_id: int,
+    page: int,
+    page_size: int,
+    from_at: datetime | None = None,
+    to_at: datetime | None = None,
+    episode_type: str | None = None,
+    plan_id: int | None = None,
+) -> tuple[list[Episode], int]:
+    filters = [Episode.pet_id == pet_id]
+    if from_at is not None:
+        filters.append(Episode.happened_at >= from_at)
+    if to_at is not None:
+        filters.append(Episode.happened_at <= to_at)
+    if episode_type is not None:
+        filters.append(Episode.episode_type == episode_type)
+    if plan_id is not None:
+        filters.append(Episode.plan_links.any(EpisodePlanLink.plan_id == plan_id))
+    total = db.scalar(select(func.count(Episode.id)).where(*filters)) or 0
     statement = (
         select(Episode)
-        .where(Episode.pet_id == pet_id)
-        .options(selectinload(Episode.observations), selectinload(Episode.owner_interpretations))
+        .where(*filters)
+        .options(*EPISODE_LOADS)
         .order_by(Episode.happened_at.desc(), Episode.id.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)

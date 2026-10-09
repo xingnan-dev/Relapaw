@@ -30,6 +30,36 @@ class ObservationSourceType(StringEnum):
     MANUAL_IMPORT = "manual_import"
 
 
+class DangerSignal(StringEnum):
+    BREATHING_DIFFICULTY = "breathing_difficulty"
+    PROLONGED_SEIZURE = "prolonged_seizure"
+    COLLAPSE_OR_UNABLE_TO_STAND = "collapse_or_unable_to_stand"
+    SEVERE_BLEEDING = "severe_bleeding"
+    SUSPECTED_POISONING = "suspected_poisoning"
+    OTHER_URGENT_CONCERN = "other_urgent_concern"
+
+
+class EvidenceSourceType(StringEnum):
+    RAW_OWNER_INPUT = "RAW_OWNER_INPUT"
+    OBSERVATION = "OBSERVATION"
+    OWNER_INTERPRETATION = "OWNER_INTERPRETATION"
+    FOLLOW_UP = "FOLLOW_UP"
+
+
+class FollowUpStatus(StringEnum):
+    PENDING = "PENDING"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+
+
+class FollowUpOutcome(StringEnum):
+    PERSISTING = "PERSISTING"
+    IMPROVED = "IMPROVED"
+    WORSENED = "WORSENED"
+    RESOLVED = "RESOLVED"
+    NEW_SIGNS = "NEW_SIGNS"
+
+
 class LifeEventType(StringEnum):
     MOVING = "moving"
     NEW_PET = "new_pet"

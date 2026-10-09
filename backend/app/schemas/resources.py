@@ -47,12 +47,29 @@ class LifeEventRead(ORMModel):
         return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
 
+class ObservationPlanItemCreate(BaseModel):
+    label: str = Field(min_length=1, max_length=200)
+    description: str | None = None
+    is_required: bool = True
+
+
+class ObservationPlanItemRead(ORMModel):
+    id: int
+    plan_id: int
+    label: str
+    description: str | None = None
+    sort_order: int
+    is_required: bool
+    created_at: datetime
+
+
 class ObservationPlanCreate(BaseModel):
     status: ObservationPlanStatus = ObservationPlanStatus.DRAFT
     start_at: datetime | None = None
     end_at: datetime | None = None
     goal: str = Field(min_length=1)
     items_to_observe: list[dict[str, Any]] = Field(default_factory=list)
+    items: list[ObservationPlanItemCreate] = Field(default_factory=list)
 
     @field_validator("start_at", "end_at")
     @classmethod
@@ -87,6 +104,7 @@ class ObservationPlanRead(ORMModel):
     end_at: datetime | None = None
     goal: str
     items_to_observe: list[dict[str, Any]] = Field(default_factory=list)
+    items: list[ObservationPlanItemRead] = Field(default_factory=list)
 
     @field_validator("start_at", "end_at")
     @classmethod
