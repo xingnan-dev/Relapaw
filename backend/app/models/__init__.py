@@ -1,4 +1,7 @@
 from app.models.entities import (
+    AnalysisRun,
+    Claim,
+    ClaimEvidenceReference,
     Episode,
     EpisodeFollowUp,
     EpisodePlanLink,
@@ -12,6 +15,8 @@ from app.models.entities import (
     Pet,
     PetBaseline,
     SafetyCheck,
+    Uncertainty,
+    UserConfirmation,
     VeterinaryEscalation,
 )
 
@@ -19,4 +24,5 @@ __all__ = [
     "Pet", "OwnerProfile", "PetBaseline", "Episode", "Observation",
     "OwnerInterpretation", "LifeEvent", "ObservationPlan", "ObservationPlanItem", "VeterinaryEscalation",
     "SafetyCheck", "EvidenceReference", "EpisodePlanLink", "EpisodeFollowUp",
+    "AnalysisRun", "Claim", "ClaimEvidenceReference", "Uncertainty", "UserConfirmation",
 ]

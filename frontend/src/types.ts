@@ -165,3 +165,73 @@ export interface PetCreate {
   sex?: string;
   neutered?: boolean;
 }
+
+export type AnalysisRunStatus = "COMPLETED" | "FAILED" | "BLOCKED_BY_SAFETY";
+export type ClaimStatus = "PROPOSED" | "CONFIRMED" | "REJECTED";
+export type ClaimConfidence = "LOW" | "MEDIUM" | "HIGH";
+export type ConfirmationDecision = "CONFIRMED" | "REJECTED";
+
+export interface UserConfirmation {
+  id: number;
+  claim_id: number;
+  decision: ConfirmationDecision;
+  note: string | null;
+  created_at: string;
+}
+
+export interface AnalysisEvidenceReference {
+  id: number;
+  claim_id: number;
+  evidence_reference_id: number | null;
+  source_type: string;
+  source_id: number | null;
+  field_path: string;
+  observed_at: string;
+  recorded_at: string;
+  excerpt: string | null;
+  role: "SUPPORTS" | "LIMITS" | "CONTEXT";
+  created_at: string;
+}
+
+export interface AnalysisUncertainty {
+  id: number;
+  claim_id: number;
+  kind: "MISSING_CONTEXT" | "ALTERNATIVE_EXPLANATION" | "LIMITED_OBSERVATION" | "OTHER";
+  description: string;
+  created_at: string;
+}
+
+export interface AnalysisClaim {
+  id: number;
+  analysis_run_id: number;
+  claim_type: string;
+  statement: string;
+  confidence_label: ClaimConfidence;
+  status: ClaimStatus;
+  created_at: string;
+  evidence_references: AnalysisEvidenceReference[];
+  uncertainties: AnalysisUncertainty[];
+  confirmations: UserConfirmation[];
+}
+
+export interface AnalysisRun {
+  id: number;
+  episode_id: number;
+  request_id: string;
+  status: AnalysisRunStatus;
+  adapter_name: string;
+  model_provider: string;
+  model_name: string;
+  model_version: string;
+  prompt_contract_version: string;
+  input_contract_version: string;
+  output_contract_version: string;
+  input_snapshot: Record<string, unknown>;
+  normalized_output: Record<string, unknown> | null;
+  error_code: string | null;
+  source_episode_updated_at: string;
+  created_at: string;
+  completed_at: string | null;
+  is_stale: boolean;
+  claims: AnalysisClaim[];
+}

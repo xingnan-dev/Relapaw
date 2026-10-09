@@ -18,6 +18,7 @@ from app.schemas.episode import (
 from app.services.records import create_complete_episode, update_episode_aggregate
 from app.services.timeline import get_episode_detail
 from app.services.follow_ups import episode_has_follow_ups
+from app.services.understanding import episode_has_analysis
 
 router = APIRouter(prefix="/episodes", tags=["episodes"])
 
@@ -47,6 +48,8 @@ def delete_episode(episode_id: int, db: Session = Depends(get_db)):
     episode = require_episode(db, episode_id)
     if episode_has_follow_ups(db, episode_id):
         raise APIError(409, "EPISODE_HAS_FOLLOW_UPS", "Episode has follow-up history and cannot be deleted")
+    if episode_has_analysis(db, episode_id):
+        raise APIError(409, "EPISODE_HAS_ANALYSIS", "Episode has analysis history and cannot be deleted")
     try:
         db.delete(episode)
         db.commit()

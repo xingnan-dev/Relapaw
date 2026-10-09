@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { deleteEpisode, getEpisode, getTimeline, scheduleFollowUp, updateEpisode, updateVeterinaryEscalation } from "../api";
 import { useCurrentPet } from "../state/CurrentPetContext";
+import { UnderstandingPanel } from "../components/UnderstandingPanel";
 import type { Episode, EpisodeUpdate, TimelineFilters, VeterinaryEscalation } from "../types";
 
 type Range = "all" | "30" | "7" | "today";
@@ -106,11 +107,12 @@ function EpisodePanel({ episode, state, mode, error, onBack, onRetry, onEdit, on
     <Detail title="结构化背景"><dl><dt>发生时间</dt><dd>{new Date(episode.happened_at).toLocaleString()}</dd><dt>更新时间</dt><dd>{new Date(episode.updated_at).toLocaleString()}</dd><dt>类型</dt><dd>{episode.episode_type}</dd><dt>地点</dt><dd>{episode.location || "未填写"}</dd><dt>触发背景</dt><dd>{episode.trigger_context || "未填写"}</dd><dt>Context</dt><dd>{episode.context ? JSON.stringify(episode.context) : "未填写"}</dd></dl></Detail>
     <Detail title="人工 Safety Check"><p>{episode.safety_check?.result || "未进行"}</p>{episode.safety_check?.danger_signals.map((signal) => <p key={signal}>{signal}</p>)}</Detail>
     {episode.veterinary_escalations?.length > 0 && <VeterinaryEscalationPanel episode={episode} onChanged={onEscalationChanged} />}
+    <UnderstandingPanel episode={episode} />
     <Detail title="Evidence 来源信息">{episode.evidence_references?.length ? episode.evidence_references.map((item) => <p key={item.id}>{item.source_type} · {item.field_path} · {new Date(item.observed_at).toLocaleString()}</p>) : <p>暂无来源记录</p>}</Detail>
     <Detail title="Observation Plan">{episode.plan_links?.length ? episode.plan_links.map((item) => <p key={item.id}>关联计划 #{item.plan_id}</p>) : <p>未关联观察计划</p>}</Detail>
     <Detail title="复评关系">{episode.result_of_follow_up && <p><button onClick={() => onOpenRelated(episode.result_of_follow_up!.source_episode_id)}>查看原记录</button></p>}{episode.scheduled_follow_ups?.length ? episode.scheduled_follow_ups.map((item) => <p key={item.id}>{new Date(item.scheduled_at).toLocaleString()} · {item.status}{item.result_episode_id && <button onClick={() => onOpenRelated(item.result_episode_id!)}>查看复评记录</button>}</p>) : <p>尚未安排复评</p>}</Detail>
     {hasFollowUpHistory && <p className="safety-note">这条记录已有复评关系。为保留可追溯历史，不能删除。</p>}
-    {error && <p role="alert" className="form-error">{error}</p>}<div className="panel-actions"><button onClick={onSchedule}>安排复评</button><button onClick={onEdit}>编辑记录</button><button className="danger-button" disabled={hasFollowUpHistory} onClick={onDelete}>删除记录</button></div>
+    {error && <p role="alert" className="form-error">{error}</p>}<div className="panel-actions episode-actions"><button onClick={onSchedule}>安排复评</button><button onClick={onEdit}>编辑记录</button><button className="danger-button" disabled={hasFollowUpHistory} onClick={onDelete}>删除记录</button></div>
   </section>;
 }
 

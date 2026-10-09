@@ -1,4 +1,4 @@
-import type { CompleteEpisodeCreate, Episode, EpisodeUpdate, FollowUp, FollowUpComplete, ObservationPlan, ObservationPlanStatus, Pet, PetCreate, TimelineFilters, TimelinePage, VeterinaryEscalation, VeterinaryEscalationStatus } from "./types";
+import type { AnalysisRun, CompleteEpisodeCreate, ConfirmationDecision, Episode, EpisodeUpdate, FollowUp, FollowUpComplete, ObservationPlan, ObservationPlanStatus, Pet, PetCreate, TimelineFilters, TimelinePage, UserConfirmation, VeterinaryEscalation, VeterinaryEscalationStatus } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -84,3 +84,23 @@ export function cancelFollowUp(followUpId: number): Promise<FollowUp> {
 export function listObservationPlans(petId: number): Promise<ObservationPlan[]> { return request(`/api/v1/pets/${petId}/observation-plans`); }
 export function createObservationPlan(petId: number, payload: { status: ObservationPlanStatus; start_at: string; end_at: string; goal: string; items: Array<{ label: string; description?: string; is_required: boolean }> }): Promise<ObservationPlan> { return request(`/api/v1/pets/${petId}/observation-plans`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); }
 export function updateObservationPlan(planId: number, status: ObservationPlanStatus): Promise<ObservationPlan> { return request(`/api/v1/observation-plans/${planId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) }); }
+
+export function listAnalysisRuns(episodeId: number): Promise<AnalysisRun[]> {
+  return request(`/api/v1/episodes/${episodeId}/analysis-runs`);
+}
+
+export function createAnalysisRun(episodeId: number, requestId: string): Promise<AnalysisRun> {
+  return request(`/api/v1/episodes/${episodeId}/analysis-runs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ request_id: requestId }),
+  });
+}
+
+export function decideClaim(claimId: number, decision: ConfirmationDecision): Promise<UserConfirmation> {
+  return request(`/api/v1/claims/${claimId}/confirmations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decision }),
+  });
+}

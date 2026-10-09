@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any
 
 from sqlalchemy import JSON, Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
@@ -80,6 +80,7 @@ class Episode(Base):
     result_of_follow_up: Mapped["EpisodeFollowUp | None"] = relationship(
         back_populates="result_episode", foreign_keys="EpisodeFollowUp.result_episode_id", uselist=False
     )
+    analysis_runs: Mapped[list["AnalysisRun"]] = relationship(back_populates="episode")
 
 
 class Observation(Base):
@@ -226,3 +227,111 @@ class EpisodeFollowUp(Base):
 
     source_episode: Mapped[Episode] = relationship(back_populates="scheduled_follow_ups", foreign_keys=[source_episode_id])
     result_episode: Mapped[Episode | None] = relationship(back_populates="result_of_follow_up", foreign_keys=[result_episode_id])
+
+
+class AnalysisRun(Base):
+    __tablename__ = "analysis_runs"
+    __table_args__ = (
+        UniqueConstraint("episode_id", "request_id", name="uq_analysis_run_episode_request"),
+        CheckConstraint("status IN ('COMPLETED', 'FAILED', 'BLOCKED_BY_SAFETY')", name="ck_analysis_run_status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    episode_id: Mapped[int] = mapped_column(ForeignKey("episodes.id", ondelete="RESTRICT"), index=True)
+    request_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    adapter_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    model_provider: Mapped[str] = mapped_column(String(100), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    prompt_contract_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    input_contract_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    output_contract_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    input_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    normalized_output: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    source_episode_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    episode: Mapped[Episode] = relationship(back_populates="analysis_runs")
+    claims: Mapped[list["Claim"]] = relationship(back_populates="analysis_run", cascade="all, delete-orphan", order_by="Claim.id")
+
+    @property
+    def is_stale(self) -> bool:
+        source = self.source_episode_updated_at
+        current = self.episode.updated_at
+        if source.tzinfo is None:
+            source = source.replace(tzinfo=timezone.utc)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=timezone.utc)
+        return current > source
+
+
+class Claim(Base):
+    __tablename__ = "claims"
+    __table_args__ = (
+        CheckConstraint("status IN ('PROPOSED', 'CONFIRMED', 'REJECTED')", name="ck_claim_status"),
+        CheckConstraint("confidence_label IN ('LOW', 'MEDIUM', 'HIGH')", name="ck_claim_confidence"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    analysis_run_id: Mapped[int] = mapped_column(ForeignKey("analysis_runs.id", ondelete="CASCADE"), index=True)
+    claim_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    statement: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence_label: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PROPOSED")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    analysis_run: Mapped[AnalysisRun] = relationship(back_populates="claims")
+    evidence_references: Mapped[list["ClaimEvidenceReference"]] = relationship(back_populates="claim", cascade="all, delete-orphan", order_by="ClaimEvidenceReference.id")
+    uncertainties: Mapped[list["Uncertainty"]] = relationship(back_populates="claim", cascade="all, delete-orphan", order_by="Uncertainty.id")
+    confirmations: Mapped[list["UserConfirmation"]] = relationship(back_populates="claim", cascade="all, delete-orphan", order_by="UserConfirmation.id")
+
+
+class ClaimEvidenceReference(Base):
+    __tablename__ = "claim_evidence_references"
+    __table_args__ = (CheckConstraint("role IN ('SUPPORTS', 'LIMITS', 'CONTEXT')", name="ck_claim_evidence_role"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id", ondelete="CASCADE"), index=True)
+    evidence_reference_id: Mapped[int | None] = mapped_column(ForeignKey("evidence_references.id", ondelete="SET NULL"), index=True)
+    source_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    source_id: Mapped[int | None] = mapped_column(Integer)
+    field_path: Mapped[str] = mapped_column(String(200), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    excerpt: Mapped[str | None] = mapped_column(Text)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    claim: Mapped[Claim] = relationship(back_populates="evidence_references")
+
+
+class Uncertainty(Base):
+    __tablename__ = "uncertainties"
+    __table_args__ = (CheckConstraint("kind IN ('MISSING_CONTEXT', 'ALTERNATIVE_EXPLANATION', 'LIMITED_OBSERVATION', 'OTHER')", name="ck_uncertainty_kind"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(50), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    claim: Mapped[Claim] = relationship(back_populates="uncertainties")
+
+
+class UserConfirmation(Base):
+    __tablename__ = "user_confirmations"
+    __table_args__ = (
+        UniqueConstraint("claim_id", name="uq_user_confirmation_claim"),
+        CheckConstraint("decision IN ('CONFIRMED', 'REJECTED')", name="ck_confirmation_decision"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id", ondelete="CASCADE"), index=True)
+    decision: Mapped[str] = mapped_column(String(20), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    claim: Mapped[Claim] = relationship(back_populates="confirmations")

@@ -60,6 +60,42 @@ class FollowUpOutcome(StringEnum):
     NEW_SIGNS = "NEW_SIGNS"
 
 
+class AnalysisRunStatus(StringEnum):
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    BLOCKED_BY_SAFETY = "BLOCKED_BY_SAFETY"
+
+
+class ClaimStatus(StringEnum):
+    PROPOSED = "PROPOSED"
+    CONFIRMED = "CONFIRMED"
+    REJECTED = "REJECTED"
+
+
+class ClaimConfidence(StringEnum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+
+
+class EvidenceRole(StringEnum):
+    SUPPORTS = "SUPPORTS"
+    LIMITS = "LIMITS"
+    CONTEXT = "CONTEXT"
+
+
+class UncertaintyKind(StringEnum):
+    MISSING_CONTEXT = "MISSING_CONTEXT"
+    ALTERNATIVE_EXPLANATION = "ALTERNATIVE_EXPLANATION"
+    LIMITED_OBSERVATION = "LIMITED_OBSERVATION"
+    OTHER = "OTHER"
+
+
+class ConfirmationDecision(StringEnum):
+    CONFIRMED = "CONFIRMED"
+    REJECTED = "REJECTED"
+
+
 class LifeEventType(StringEnum):
     MOVING = "moving"
     NEW_PET = "new_pet"
