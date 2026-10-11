@@ -44,7 +44,7 @@ React + TypeScript + FastAPI + Pydantic + SQLAlchemy
 ```text
 Phase 2 已关闭
   -> 比赛 AI Coding 证据框架（已验收）
-  -> 轻量 Design System
+  -> 轻量 Design System（已验收）
   -> Phase 3 Scope / Acceptance Criteria
   -> 长期记忆投影与量化 Baseline 设计
 ```

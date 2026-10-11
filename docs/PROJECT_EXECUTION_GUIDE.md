@@ -34,7 +34,7 @@ Phase 0/0.1 工程基础（已完成）
 → Phase 1 结构化记录闭环（已完成）
 → Phase 2 文本 Understanding（已完成）
 → 比赛 AI Coding 证据框架（已验收）
-→ 轻量 Design System
+→ 轻量 Design System（已验收）
 → Phase 3 长期记忆投影与量化 Baseline
 → Evaluation 与 Safety 评估体系
 → 完整 UI/UX 与品牌精修
@@ -99,7 +99,7 @@ docs/competition/
 
 出口条件：材料结构建成、Phase 0–2 已有证据完成映射、第三方来源规则明确。
 
-## 5. 轻量 Design System
+## 5. 轻量 Design System（已验收）
 
 目标：在 Phase 3 增加复杂页面前，冻结基础视觉语言；此阶段不重写业务逻辑。
 
@@ -286,10 +286,10 @@ SafetyCheck = ESCALATE_TO_VET
 
 ## 15. 当前唯一下一步
 
-当前 Phase 0–2 已关闭，比赛 AI Coding 证据框架已建立、完成既有证据映射，并于 2026-10-11 通过人工确认。按本指引，下一步只能是：
+当前 Phase 0–2、比赛 AI Coding 证据框架和轻量 Design System 均已关闭并通过人工确认。按本指引，下一步只能是：
 
 ```text
-建立轻量 Design System
+Phase 3：长期记忆投影与量化 Baseline
 ```
 
-完成基础视觉 token、组件、状态语义、响应式与可访问性规范并通过出口条件后，才能进入 Phase 3；不得直接跳到 Phase 3、RAG、多模态或完整视觉重构。
+Phase 3 必须先完成现状审计、Requirements、Architecture、Scope 与 Acceptance，再进入 migration 或功能实现；不得跳到 RAG、多模态或完整视觉重构。
