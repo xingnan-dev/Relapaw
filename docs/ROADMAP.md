@@ -1,6 +1,6 @@
 # Relapaw Product and Engineering Roadmap
 
-更新日期：2026-10-07
+更新日期：2026-10-11
 
 ## 长期目标
 
@@ -22,7 +22,7 @@ React + TypeScript + FastAPI + Pydantic + SQLAlchemy
 |---|---|---|
 | 0/0.1 | 工程、数据边界、入口与低保真 UX | Review、回归通过、开发留痕、Git 基线 |
 | 1 | 无 AI 的结构化记录闭环 | 记录→观察→复评→长期记忆可人工完成；最小 EvidenceReference |
-| 2 | 文本 Understanding | 经 Adapter 输出 Claim/Evidence/Uncertainty；用户确认后才写入记忆 |
+| 2 | 文本 Understanding | 经 Adapter 输出 Claim/Evidence/Uncertainty；用户逐条确认/拒绝并保留不可变审计，不自动写 Baseline 或长期记忆投影 |
 | 3 | 长期记忆与量化 Baseline | 可重算时间窗口、样本量、范围和趋势；不足样本有明确状态 |
 | 4 | 安全 RAG | 知识来源与版本可追溯；安全评估优先且可阻断解释 |
 | 5 | 多模态 | 媒体只作为可追溯输入来源；识别结果仍需确认和评估 |
@@ -40,12 +40,11 @@ React + TypeScript + FastAPI + Pydantic + SQLAlchemy
 ## 近期执行顺序
 
 ```text
-Phase 0/0.1 Review
-  -> 补齐真实生命周期材料
-  -> 修复 Review 问题并回归
-  -> 人工验收
-  -> 经授权建立 Git 基线
-  -> Phase 1 Scope / Acceptance Criteria
+Phase 2 收尾
+  -> AI Code Review / Fix and Regression / Acceptance
+  -> 经授权提交收尾材料
+  -> Phase 3 Scope / Acceptance Criteria
+  -> 长期记忆投影与量化 Baseline 设计
 ```
 
-当前不提前实现 Agent、多模态、模型能力、自动医疗判断或 Pet↔Pet 数据模型。
+Phase 3 才定义已确认 Claim 是否、何时以及如何进入可重算长期记忆投影。当前不提前实现 RAG、Agent、多模态、自动医疗判断或 Pet↔Pet 数据模型。

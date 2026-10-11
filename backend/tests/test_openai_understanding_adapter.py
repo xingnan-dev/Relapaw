@@ -113,6 +113,7 @@ def test_responses_parse_uses_structured_output_and_no_tools_or_storage():
     assert "observation or behavior itself" in call["instructions"]
     assert "Match the natural language" in call["instructions"]
     assert "never as supporting evidence" in call["instructions"]
+    assert provider.descriptor.prompt_contract_version == "text-understanding/v3-provider-neutral"
     assert provider.descriptor.model_version == "resolved-model-2026-10-01"
 
 

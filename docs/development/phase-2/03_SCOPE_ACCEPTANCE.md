@@ -59,7 +59,9 @@
 - [x] Adapter contract、Safety short-circuit、非法 Evidence、事务回滚和确认冲突有测试。
 - [x] 完成 AI Code Review、修复、回归与污染检查。
 - [x] 完成 Slice 2 可运行路径人工验收（2026-10-09；completed/FakeAdapter 分支由自动测试覆盖）。
-- [ ] 仅在人工明确授权后 commit；不得自动 push。
+- [x] 主实现仅在人工明确授权后 commit 并 push（`f0229ee`）。
+- [x] 真实 Qwen completed、历史失败审计、REJECTED 决定及刷新后持久化已人工验收。
+- [x] 本阶段确认/拒绝仅形成 UserConfirmation 审计，不自动写 Baseline 或长期记忆投影；投影规则留给 Phase 3。
 
 ## 人工验收主路径
 
