@@ -1,6 +1,7 @@
 from app.models.entities import (
     AnalysisRun,
     BaselineSnapshot,
+    BaselineEvidence,
     Claim,
     ClaimEvidenceReference,
     Episode,
@@ -30,4 +31,5 @@ __all__ = [
     "AnalysisRun", "Claim", "ClaimEvidenceReference", "Uncertainty", "UserConfirmation",
     "MemoryCandidate", "MemoryDecision",
     "BaselineSnapshot",
+    "BaselineEvidence",
 ]

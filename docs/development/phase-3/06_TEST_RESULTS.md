@@ -28,7 +28,22 @@
 - 独立空数据库完整 `upgrade head → downgrade base → upgrade head` 成功。
 - 测试没有调用 Provider 或真实付费 API。
 
+### Slice 3 人工验收
+
+- 2026-10-12：用户本地运行专项测试，终端显示 `5 passed in 0.66s`。
+- 用户明确确认 Phase 3 Slice 3 人工验收通过。
+
 ### Slice 2 人工验收
 
 - 2026-10-12：用户本地运行专项测试，终端显示 `11 passed in 0.37s`。
 - 用户明确确认 Phase 3 Slice 2 人工验收通过。
+
+## Slice 3 — 2026-10-12
+
+- Baseline 定向测试：`16 passed`，其中 Slice 3 新增 5 项 lineage/lifecycle 集成测试。
+- Backend 全量 pytest：`97 passed`。
+- Frontend Vitest：`49 passed`；production build：通过；`pip check`：通过。
+- 开发数据库升级到 `20261012_0008 (head)`；`alembic check` 无 schema drift。
+- 独立空数据库完整 `upgrade head → downgrade base → upgrade head` 成功。
+- 覆盖当前/对照字段级 lineage、编辑后不可变旧值、删除后外键置空、相关新增 stale、未来 Episode 排除及 lineage 失败整体回滚。
+- 测试没有调用 Provider 或真实付费 API。

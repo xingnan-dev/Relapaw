@@ -115,3 +115,29 @@ GET  /api/v1/baseline-snapshots/{snapshot_id}
 - 用户明确回复“Phase 3 Slice 2 人工验收通过”。
 - 验收覆盖窗口边界、单位隔离、样本门槛、趋势、fingerprint、幂等重算、stale 及人工 Baseline 隔离。
 - 当前进入 Git commit 授权门禁；尚未 commit、尚未 push，Slice 3 尚未开始。
+
+## 2026-10-12 — Slice 3 实现
+
+### 已实现
+
+- 新增 migration `20261012_0008` 与 `BaselineEvidence`，没有修改旧 migration。
+- 每个 Episode 数值字段、Observation measured_value 和 Episode 类型频率均保存独立 evidence。
+- lineage 区分 `CURRENT/COMPARISON`，并保存 metric key、field path、值、发生时间、来源更新时间及 behavior/unit 快照。
+- Episode 更新删除旧 Observation 后，旧 evidence 的 observation_id 置空但值快照保留。
+- 仅被 Baseline 引用的 Episode 可按既有规则删除；episode_id/observation_id 置空，Snapshot 和 lineage 保留并显示 stale。
+- 当前或对照窗口新增相关 Episode 会使旧 Snapshot stale；as_of 之后的未来 Episode 不影响旧 Snapshot。
+- recompute 原子写入 Snapshot 与全部 lineage；任一 evidence 构造失败会整体回滚。
+- 旧 `0007` Snapshot 在相同来源重算时可幂等补建 lineage，不覆盖指标快照。
+
+### 边界保持
+
+- 未扩大 Episode 删除保护：AnalysisRun/Follow-up 规则保持原样。
+- 未修改人工 PetBaseline、SafetyCheck、VeterinaryEscalation、AnalysisRun、Claim 或 Memory 决定。
+- 未调用 Provider；前端 Slice 4 尚未开始。
+
+## 2026-10-12 — Slice 3 人工验收
+
+- 用户在本地执行 `tests/test_baseline_lineage.py -v`，截图显示 5 项专项测试全部通过。
+- 用户明确回复“Phase 3 Slice 3 人工验收通过”。
+- 验收覆盖字段级 lineage、编辑/新增/删除生命周期、未来记录排除及事务回滚。
+- 当前进入 Git commit 授权门禁；尚未 commit、尚未 push，Slice 4 尚未开始。

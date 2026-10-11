@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 
-from pydantic import field_validator
+from typing import Any
+
+from pydantic import Field, field_validator
 
 from app.domain.enums import BaselineSnapshotStatus, BaselineWindow
 from app.schemas.analysis import StrictModel
@@ -33,10 +35,32 @@ class BaselineSnapshotRead(ORMModel):
     metrics_json: list[dict]
     created_at: datetime
     is_stale: bool
+    evidences: list["BaselineEvidenceRead"] = Field(default_factory=list)
 
     @field_validator("window_start", "window_end", "as_of", "created_at")
     @classmethod
     def database_datetimes_are_utc(cls, value: datetime | None) -> datetime | None:
         if value is None:
             return None
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+class BaselineEvidenceRead(ORMModel):
+    id: int
+    snapshot_id: int
+    episode_id: int | None
+    observation_id: int | None
+    source_type: str
+    window_segment: str
+    metric_key: str
+    field_path: str
+    value_snapshot: Any
+    source_snapshot: dict[str, Any]
+    observed_at: datetime
+    source_updated_at: datetime
+    created_at: datetime
+
+    @field_validator("observed_at", "source_updated_at", "created_at")
+    @classmethod
+    def database_datetimes_are_utc(cls, value: datetime) -> datetime:
         return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)

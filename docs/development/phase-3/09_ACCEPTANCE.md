@@ -26,6 +26,31 @@
 - 本次验收不代表 Slice 2–4 或整个 Phase 3 已完成。
 - 下一门禁为用户授权 commit；push 仍需单独判断和授权。
 
+## Slice 3：字段级 Evidence lineage 与生命周期
+
+验收日期：2026-10-12
+结果：通过
+
+### 人工检查证据
+
+- 用户在本地运行 `tests/test_baseline_lineage.py -v`。
+- 终端截图显示 5 项测试全部 `PASSED`，汇总为 `5 passed in 0.66s`。
+- 用户明确回复“Phase 3 Slice 3 人工验收通过”。
+
+### 已接受的产品行为
+
+- 每个量化指标可以追溯到当前或对照窗口中的具体来源字段和值快照。
+- Episode 编辑后旧值不被覆盖，旧 Observation 外键置空并保留不可变来源信息。
+- 仅被 Baseline 引用的 Episode 仍可删除，删除后 Snapshot/lineage 保留并显示 stale。
+- 新增相关 Episode 使旧快照 stale；`as_of` 之后的未来 Episode 不影响旧快照。
+- Snapshot 与全部 lineage 原子写入，任一 lineage 失败不会留下部分聚合。
+- 人工 PetBaseline、SafetyCheck、VeterinaryEscalation、AnalysisRun 与 Memory 决定不被修改。
+
+### 后续边界
+
+- 长期记忆与量化 Baseline 的前端闭环属于 Slice 4。
+- 下一门禁为用户授权 commit；push 仍需单独判断和授权。
+
 ## Slice 2：确定性量化 Baseline 与不可变快照
 
 验收日期：2026-10-12

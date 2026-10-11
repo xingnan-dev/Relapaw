@@ -424,8 +424,35 @@ class BaselineSnapshot(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     pet: Mapped[Pet] = relationship(back_populates="baseline_snapshots")
+    evidences: Mapped[list["BaselineEvidence"]] = relationship(
+        back_populates="snapshot", cascade="all, delete-orphan", order_by="BaselineEvidence.id"
+    )
     _is_stale: ClassVar[bool] = False
 
     @property
     def is_stale(self) -> bool:
         return self._is_stale
+
+
+class BaselineEvidence(Base):
+    __tablename__ = "baseline_evidences"
+    __table_args__ = (
+        CheckConstraint("source_type IN ('EPISODE', 'OBSERVATION')", name="ck_baseline_evidence_source_type"),
+        CheckConstraint("window_segment IN ('CURRENT', 'COMPARISON')", name="ck_baseline_evidence_segment"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    snapshot_id: Mapped[int] = mapped_column(ForeignKey("baseline_snapshots.id", ondelete="CASCADE"), index=True)
+    episode_id: Mapped[int | None] = mapped_column(ForeignKey("episodes.id", ondelete="SET NULL"), index=True)
+    observation_id: Mapped[int | None] = mapped_column(ForeignKey("observations.id", ondelete="SET NULL"), index=True)
+    source_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    window_segment: Mapped[str] = mapped_column(String(20), nullable=False)
+    metric_key: Mapped[str] = mapped_column(String(300), nullable=False)
+    field_path: Mapped[str] = mapped_column(String(200), nullable=False)
+    value_snapshot: Mapped[Any] = mapped_column(JSON, nullable=False)
+    source_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    snapshot: Mapped[BaselineSnapshot] = relationship(back_populates="evidences")

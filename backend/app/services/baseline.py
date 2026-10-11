@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.entities import BaselineSnapshot, Episode
+from app.models.entities import BaselineEvidence, BaselineSnapshot, Episode
 
 
 ALGORITHM_VERSION = "quantitative-baseline/v1"
@@ -48,6 +48,20 @@ class BaselineCalculation:
     status: str
     sample_count: int
     metrics: list[dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class LineageItem:
+    episode_id: int
+    observation_id: int | None
+    source_type: str
+    window_segment: str
+    metric_key: str
+    field_path: str
+    value_snapshot: Any
+    source_snapshot: dict[str, Any]
+    observed_at: datetime
+    source_updated_at: datetime
 
 
 def utc(value: datetime) -> datetime:
@@ -238,6 +252,95 @@ def calculate_baseline(window: str, as_of: datetime, sources: list[EpisodeSource
     )
 
 
+def build_lineage(window: str, as_of: datetime, sources: list[EpisodeSource]) -> list[LineageItem]:
+    window_start, window_end, comparison_start = window_bounds(window, as_of)
+    items: list[LineageItem] = []
+    for source in sources:
+        happened_at = utc(source.happened_at)
+        if happened_at > window_end:
+            continue
+        if window_start is None:
+            segment = "CURRENT"
+        elif happened_at >= window_start:
+            segment = "CURRENT"
+        elif comparison_start is not None and happened_at >= comparison_start:
+            segment = "COMPARISON"
+        else:
+            continue
+
+        base_snapshot = {"episode_type": source.episode_type}
+        items.append(LineageItem(
+            episode_id=source.id,
+            observation_id=None,
+            source_type="EPISODE",
+            window_segment=segment,
+            metric_key=f"episode_type_frequency|{source.episode_type}",
+            field_path="episode_type",
+            value_snapshot=source.episode_type,
+            source_snapshot=base_snapshot,
+            observed_at=happened_at,
+            source_updated_at=utc(source.updated_at),
+        ))
+        for field_name, value, unit in (
+            ("duration_seconds", source.duration_seconds, "seconds"),
+            ("frequency_count", source.frequency_count, "count"),
+            ("intensity", source.intensity, "level"),
+        ):
+            number = _finite_number(value)
+            if number is not None:
+                items.append(LineageItem(
+                    episode_id=source.id,
+                    observation_id=None,
+                    source_type="EPISODE",
+                    window_segment=segment,
+                    metric_key=f"{field_name}||{unit}",
+                    field_path=field_name,
+                    value_snapshot=number,
+                    source_snapshot={**base_snapshot, "unit": unit},
+                    observed_at=happened_at,
+                    source_updated_at=utc(source.updated_at),
+                ))
+        for observation in source.observations:
+            number = _finite_number(observation.measured_value)
+            if number is not None and observation.unit:
+                items.append(LineageItem(
+                    episode_id=source.id,
+                    observation_id=observation.id,
+                    source_type="OBSERVATION",
+                    window_segment=segment,
+                    metric_key=f"measured_value|{observation.behavior_type}|{observation.unit}",
+                    field_path="measured_value",
+                    value_snapshot=number,
+                    source_snapshot={
+                        "episode_type": source.episode_type,
+                        "behavior_type": observation.behavior_type,
+                        "unit": observation.unit,
+                    },
+                    observed_at=happened_at,
+                    source_updated_at=utc(observation.updated_at),
+                ))
+    return items
+
+
+def _materialize_lineage(snapshot: BaselineSnapshot, items: list[LineageItem]) -> list[BaselineEvidence]:
+    return [
+        BaselineEvidence(
+            snapshot_id=snapshot.id,
+            episode_id=item.episode_id,
+            observation_id=item.observation_id,
+            source_type=item.source_type,
+            window_segment=item.window_segment,
+            metric_key=item.metric_key,
+            field_path=item.field_path,
+            value_snapshot=item.value_snapshot,
+            source_snapshot=item.source_snapshot,
+            observed_at=item.observed_at,
+            source_updated_at=item.source_updated_at,
+        )
+        for item in items
+    ]
+
+
 def load_sources(db: Session, pet_id: int, window: str, as_of: datetime) -> list[EpisodeSource]:
     window_start, window_end, comparison_start = window_bounds(window, as_of)
     earliest = comparison_start if comparison_start is not None else window_start
@@ -285,9 +388,14 @@ def recompute_snapshot(db: Session, pet_id: int, window: str, as_of: datetime) -
             BaselineSnapshot.as_of == normalized_as_of,
             BaselineSnapshot.algorithm_version == ALGORITHM_VERSION,
             BaselineSnapshot.source_fingerprint == fingerprint,
-        )
+        ).options(selectinload(BaselineSnapshot.evidences))
     )
     if existing is not None:
+        if not existing.evidences:
+            existing.evidences = _materialize_lineage(
+                existing, build_lineage(window, normalized_as_of, sources)
+            )
+            db.flush()
         existing._is_stale = False
         return existing
     calculation = calculate_baseline(window, normalized_as_of, sources)
@@ -305,6 +413,10 @@ def recompute_snapshot(db: Session, pet_id: int, window: str, as_of: datetime) -
     )
     db.add(snapshot)
     db.flush()
+    snapshot.evidences = _materialize_lineage(
+        snapshot, build_lineage(window, normalized_as_of, sources)
+    )
+    db.flush()
     snapshot._is_stale = False
     return snapshot
 
@@ -316,7 +428,11 @@ def mark_stale(db: Session, snapshot: BaselineSnapshot) -> BaselineSnapshot:
 
 
 def get_snapshot(db: Session, snapshot_id: int) -> BaselineSnapshot | None:
-    snapshot = db.get(BaselineSnapshot, snapshot_id)
+    snapshot = db.scalar(
+        select(BaselineSnapshot)
+        .where(BaselineSnapshot.id == snapshot_id)
+        .options(selectinload(BaselineSnapshot.evidences))
+    )
     return None if snapshot is None else mark_stale(db, snapshot)
 
 
@@ -324,6 +440,7 @@ def get_latest_snapshot(db: Session, pet_id: int, window: str) -> BaselineSnapsh
     snapshot = db.scalar(
         select(BaselineSnapshot)
         .where(BaselineSnapshot.pet_id == pet_id, BaselineSnapshot.window == window)
+        .options(selectinload(BaselineSnapshot.evidences))
         .order_by(BaselineSnapshot.created_at.desc(), BaselineSnapshot.id.desc())
         .limit(1)
     )

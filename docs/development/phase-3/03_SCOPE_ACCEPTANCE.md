@@ -17,10 +17,10 @@
 
 ## Slice 3：Evidence lineage 与生命周期
 
-- [ ] 每个指标能下钻到来源字段和值快照。
-- [ ] Episode 编辑、新增、删除后的 stale/recompute 行为有集成测试。
-- [ ] lineage 写入失败整体回滚，不保留部分 Snapshot。
-- [ ] 人工 PetBaseline、SafetyCheck、VeterinaryEscalation 和 AnalysisRun 不被修改。
+- [x] 每个指标能下钻到来源字段和值快照。
+- [x] Episode 编辑、新增、删除后的 stale/recompute 行为有集成测试。
+- [x] lineage 写入失败整体回滚，不保留部分 Snapshot。
+- [x] 人工 PetBaseline、SafetyCheck、VeterinaryEscalation 和 AnalysisRun 不被修改。
 
 ## Slice 4：前端闭环
 
