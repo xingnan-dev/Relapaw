@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, createAnalysisRun, decideClaim, listAnalysisRuns } from "../api";
 import type { AnalysisClaim, AnalysisRun, ConfirmationDecision, Episode } from "../types";
 
-type RequestState = "idle" | "loading" | "completed" | "safety-blocked" | "model-not-configured" | "invalid-output" | "network-error";
+type RequestState = "idle" | "loading" | "completed" | "safety-blocked" | "model-not-configured" | "invalid-output" | "network-error" | "provider-auth" | "provider-timeout" | "provider-rate-limit" | "provider-unavailable";
 
 function requestId() {
   return globalThis.crypto?.randomUUID?.() ?? `analysis-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -21,6 +21,10 @@ const stateCopy: Record<Exclude<RequestState, "idle" | "loading" | "completed">,
   "model-not-configured": "MODEL_NOT_CONFIGURED：真实文本模型尚未配置。本次失败已记录，没有生成或伪造分析结果。",
   "invalid-output": "模型输出未通过契约校验，已安全拒绝。没有把无效内容展示为结果。",
   "network-error": "网络请求失败，当前页面、历史记录和已完成的逐条决定均已保留。",
+  "provider-auth": "模型服务认证或权限配置无效。没有生成分析结果；请由服务端管理员检查 API 配置。",
+  "provider-timeout": "模型服务响应超时。本次失败已记录，页面状态保持不变，可以重试。",
+  "provider-rate-limit": "模型服务当前达到调用限制。本次失败已记录，请稍后重试。",
+  "provider-unavailable": "模型服务暂时不可用或拒绝了本次请求。没有保存部分分析结果，请稍后重试。",
 };
 
 export function UnderstandingPanel({ episode }: { episode: Episode }) {
@@ -65,6 +69,10 @@ export function UnderstandingPanel({ episode }: { episode: Episode }) {
         if (error.code === "MODEL_NOT_CONFIGURED") setRequestState("model-not-configured");
         else if (error.code === "MODEL_OUTPUT_INVALID" || error.code === "MODEL_EVIDENCE_INVALID") setRequestState("invalid-output");
         else if (error.code === "ANALYSIS_BLOCKED_BY_SAFETY" || error.code === "SAFETY_CHECK_REQUIRED") setRequestState("safety-blocked");
+        else if (error.code === "MODEL_AUTHENTICATION_FAILED" || error.code === "MODEL_PERMISSION_DENIED") setRequestState("provider-auth");
+        else if (error.code === "MODEL_TIMEOUT") setRequestState("provider-timeout");
+        else if (error.code === "MODEL_RATE_LIMITED") setRequestState("provider-rate-limit");
+        else if (error.code?.startsWith("MODEL_")) setRequestState("provider-unavailable");
         else setRequestState("network-error");
         await loadHistory();
       } else {

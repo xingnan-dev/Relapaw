@@ -84,7 +84,12 @@ UnderstandingService
 
 - 默认 `DisabledAdapter` 返回 `MODEL_NOT_CONFIGURED`，不得伪造分析结果。
 - 测试使用注入的 FakeAdapter，只验证契约和事务，不在产品 UI 展示假结果。
-- 真实 provider adapter 在后续实现切片单独选择；密钥只从环境读取，永不写入数据库、日志、文档或前端。
+- 真实 Provider 使用官方 OpenAI Python SDK 的 Responses API 与 `responses.parse(..., text_format=UnderstandingOutput)`；Structured Outputs 之后仍执行应用侧 Pydantic 和 Evidence key 校验。
+- `OpenAIResponsesAdapter` 不配置 tools、检索或媒体输入，设置 `store=False`，禁用 SDK 自动重试，并使用单次严格 timeout。
+- 密钥只从服务端 `OPENAI_API_KEY`（兼容 `RELAPAW_OPENAI_API_KEY`）读取，模型由 `RELAPAW_OPENAI_MODEL` 指定；二者任一缺失即回退 DisabledAdapter。
+- 默认使用 SDK 的 OpenAI 官方端点；`RELAPAW_OPENAI_BASE_URL` 可显式指向实现 Responses API 的兼容端点（当前文档化实例为阿里云百炼 Qwen），`RELAPAW_MODEL_PROVIDER` 作为审计元数据保存，不通过 URL 猜测供应商。
+- OpenAI Provider 使用 Responses `parse`。百炼官方 Responses 参数表未包含 `text.format/json_schema` 且真实验证会忽略该参数，因此 `model_provider=qwen` 改走百炼官方明确支持 JSON Schema 的 OpenAI-compatible Chat Completions `parse`，并关闭 thinking；两条路径最终都必须通过同一 UnderstandingOutput Pydantic 校验。
+- 请求保存配置模型名，并在响应提供 `model` 时把实际解析到的模型标识保存为 model_version；密钥和供应商错误原文不持久化。
 - Adapter 输出必须先通过 Pydantic 契约验证，再进入事务。
 - Provider 原始 chain-of-thought 不请求、不保存、不展示。
 
@@ -93,7 +98,7 @@ UnderstandingService
 ```text
 require Episode
   -> require SafetyCheck
-  -> ESCALATE_TO_VET ? BLOCKED_BY_SAFETY : build typed input
+  -> SafetyCheck != NORMAL ? BLOCKED_BY_SAFETY : build typed input
   -> Adapter
   -> validate evidence keys and forbidden output shape
   -> persist AnalysisRun aggregate
@@ -115,7 +120,7 @@ Safety 阻断不调用 Adapter。`NORMAL` 不表示医学安全保证，只表�
 - `POST /api/v1/claims/{claim_id}/confirmations`
   - 明确提交 `CONFIRMED` 或 `REJECTED`；重复或冲突决定返回 409。
 
-统一错误至少包括：`ANALYSIS_RUN_NOT_FOUND`、`CLAIM_NOT_FOUND`、`SAFETY_CHECK_REQUIRED`、`ANALYSIS_BLOCKED_BY_SAFETY`（用于非持久化读取/操作语义）、`MODEL_NOT_CONFIGURED`、`MODEL_PROVIDER_UNAVAILABLE`、`MODEL_OUTPUT_INVALID`、`MODEL_EVIDENCE_INVALID`、`CLAIM_ALREADY_DECIDED`、`EPISODE_HAS_ANALYSIS`。
+统一错误至少包括：`ANALYSIS_RUN_NOT_FOUND`、`CLAIM_NOT_FOUND`、`SAFETY_CHECK_REQUIRED`、`ANALYSIS_BLOCKED_BY_SAFETY`、`MODEL_NOT_CONFIGURED`、`MODEL_AUTHENTICATION_FAILED`、`MODEL_PERMISSION_DENIED`、`MODEL_TIMEOUT`、`MODEL_RATE_LIMITED`、`MODEL_NETWORK_ERROR`、`MODEL_PROVIDER_UNAVAILABLE`、`MODEL_REQUEST_REJECTED`、`MODEL_REFUSED`、`MODEL_OUTPUT_INCOMPLETE`、`MODEL_OUTPUT_INVALID`、`MODEL_EVIDENCE_INVALID`、`CLAIM_ALREADY_DECIDED`、`EPISODE_HAS_ANALYSIS`。
 
 ## 6. 编辑与删除策略
 

@@ -13,14 +13,14 @@
 - [x] 模型 provider、名称、版本及输入/输出/Prompt 契约版本被保存。
 - [x] 未配置 provider 时返回真实错误，不生成模拟结果。
 - [x] 非测试运行不使用 FakeAdapter；密钥不进入日志、响应或持久化。
-- [ ] Provider 超时、限流、网络错误和非法输出有稳定错误映射。
+- [x] Provider 认证、权限、超时、限流、网络、服务异常、refusal、截断和非法输出有稳定错误映射。
 
 ## C. Observation / Interpretation / Claim 边界
 
 - [x] Adapter 输入明确区分 Raw Input、Observation 与 OwnerInterpretation。
 - [x] Claim 作为独立模型对象，不写入 Observation 或 OwnerInterpretation。
 - [x] 每条 Claim 含可展示 Evidence 和 Uncertainty，未知来源引用被拒绝。
-- [ ] 不输出伪精确情绪/关系评分、诊断或因果定论。
+- [x] Prompt 明确禁止伪精确评分、诊断、治疗/用药建议和因果定论，并要求逐 Claim 不确定性。
 
 ## D. Safety
 

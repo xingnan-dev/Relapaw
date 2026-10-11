@@ -21,7 +21,7 @@ Phase 1 已能保存人工结构化记录，但 Understand 仍只承担人工录
 5. 模型只能引用本次输入中提供的证据键；服务端拒绝未知、跨 Episode 或跨宠物引用。
 6. 模型输出先进入分析审计区。只有用户明确 `CONFIRMED` 的 Claim 才进入长期记忆投影；`REJECTED` 与未决 Claim 保留审计但不进入投影。
 7. 确认 Claim 不会创建或修改 Observation、OwnerInterpretation、PetBaseline、SafetyCheck 或 VeterinaryEscalation。
-8. 人工 Safety Check 缺失时禁止运行；结果为 `ESCALATE_TO_VET` 时创建被 Safety 阻断的 AnalysisRun，不调用模型、不生成行为 Claim。
+8. 人工 Safety Check 缺失时禁止运行；只有 `NORMAL` 可调用模型，所有其他结果创建被 Safety 阻断的 AnalysisRun，不调用模型、不生成行为 Claim。
 9. 不输出诊断、处方、治疗方案、动物心理确诊或因果定论。
 10. 不使用 RAG、外部知识库、Agent 工具调用、媒体输入或自动长期趋势。
 

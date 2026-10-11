@@ -133,3 +133,46 @@
 - 修复已决定 Claim 仍显示“尚未确认”的矛盾文案：PROPOSED、CONFIRMED、REJECTED 现在分别显示对应的模型来源与用户决定。
 - 修正文档中超出 Slice 2 范围的“长期记忆投影”人工验收步骤；本轮确认只保存在分析审计聚合中，不写 Baseline 或人工记录。
 - 复核 migration/ORM 一致性、Safety short-circuit、失败运行审计、Evidence 边界、事务回滚、确认冲突、Episode 删除保护和前端网络重试，没有发现需要扩展范围的阻断问题。
+
+## 2026-10-09 — Slice 3 OpenAI Responses Provider
+
+### 官方契约依据
+
+- 采用 OpenAI Responses API Structured Outputs 的 Python Pydantic parse helper；应用侧继续执行原 UnderstandingOutput 与 Evidence key 校验。
+- 按官方 SDK 异常类型分别处理认证、权限、timeout、rate limit、connection、HTTP status 与响应验证错误。
+- Provider 请求设置 `store=False`、不传 tools、`max_retries=0`，使用配置化单次 timeout。
+
+### 实现与隐私边界
+
+- 新增 `OpenAIResponsesAdapter`；缺少 `OPENAI_API_KEY` 或 `RELAPAW_OPENAI_MODEL` 时仍返回 DisabledAdapter。
+- key 通过 Pydantic SecretStr 读取，只用于构造服务端 SDK client，不进入请求输入快照、日志、API 响应、数据库或前端。
+- 配置模型名写入 model_name；Provider 响应的实际模型标识写入 model_version。
+- 输入只包含现有 UnderstandingInput JSON；不接 RAG、Agent、工具调用、外部搜索、多模态、诊断或长期记忆写入。
+- 输入快照完成后先结束只读数据库事务，再等待 Provider；FAILED/COMPLETED 聚合在后续短事务中原子保存。
+
+### 稳定错误码
+
+- `MODEL_AUTHENTICATION_FAILED` / `MODEL_PERMISSION_DENIED`
+- `MODEL_TIMEOUT` / `MODEL_RATE_LIMITED` / `MODEL_NETWORK_ERROR`
+- `MODEL_PROVIDER_UNAVAILABLE` / `MODEL_PROVIDER_ERROR` / `MODEL_REQUEST_REJECTED`
+- `MODEL_REFUSED` / `MODEL_OUTPUT_INCOMPLETE` / `MODEL_OUTPUT_INVALID`
+
+### 配置
+
+参考仓库根目录 `.env.example`，在 `backend/.env` 设置 key 与 model。自动测试只使用 fake client 和依赖注入，不访问真实 API；真实 smoke test 必须另获人工授权。
+
+### OpenAI 兼容端点 / Qwen
+
+- 增加可选 `RELAPAW_OPENAI_BASE_URL`，不设置时继续使用 OpenAI SDK 默认端点。
+- 增加 `RELAPAW_MODEL_PROVIDER` 审计标签；Qwen 配置使用 `qwen`，随 AnalysisRun 保存，避免把兼容端点错误记录成 OpenAI。
+- 阿里云百炼示例使用其 OpenAI 兼容 Responses API URL；WorkspaceId、地域端点和 API Key 只由部署者在 `backend/.env` 提供。
+- 测试通过 fake SDK client 断言 base URL、模型、Provider 标签、timeout 和零重试配置；未调用百炼或其他付费端点。
+- 2026-10-10/11 真实验证发现百炼 Responses 会忽略 OpenAI Structured Outputs 参数并返回 Markdown。对照百炼官方参数表后，Qwen 专用路径改为官方支持 JSON Schema 的 Chat Completions `parse`，`enable_thinking=false`；OpenAI 默认路径不变。
+- Qwen Chat 路径不设置 `max_tokens`/`max_completion_tokens`，避免官方文档提示的 JSON 截断风险；全局网络 timeout 和零自动重试仍然生效。
+- 2026-10-11 浏览器真实验收发现首条有效 Claim 偏向解释“主人为何联系兽医”且中文输入返回英文。Prompt 契约升级为 `text-understanding/v3-provider-neutral`：强制 Claim 聚焦 Episode 行为本身、避免复述、跟随输入语言，并限制未记录背景只能作为不确定性而非证据。
+
+### 最终代码审查与修复
+
+- 审查发现原服务在 Provider 等待期间仍持有数据库读事务；改为输入快照完成后先结束读事务，Provider 返回后再开启短写事务。
+- 新增“Provider 等待期间 Episode 被编辑”并发回归，发现同 Session identity cache 会让首次响应的 stale 暂时错误；完成聚合前显式刷新来源更新时间。
+- SQLite 在删除并重建 EvidenceReference 时可能复用整数 ID；当 Episode 在 Provider 等待期间变化时，Claim Evidence 外键统一置空，只保留不可变来源快照，避免把旧 Claim 错连到新 Evidence 行。

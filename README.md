@@ -29,6 +29,10 @@ python -m venv .venv
 
 API 默认位于 `http://localhost:8000`，交互文档位于 `http://localhost:8000/docs`。数据库连接可通过 `RELAPAW_DATABASE_URL` 配置。应用启动不再自动建表，数据库结构统一由 Alembic 管理。
 
+若要启用 Phase 2 文本 Understanding，请把仓库根目录 `.env.example` 中的变量复制到 `backend/.env`，填写服务端专用的 `OPENAI_API_KEY` 和 `RELAPAW_OPENAI_MODEL`。密钥不得放入前端或提交到 Git；模型未配置时接口会明确返回 `MODEL_NOT_CONFIGURED`，不会生成替代结果。可选的 `RELAPAW_OPENAI_BASE_URL` 可指向实现 Responses API 的 OpenAI 兼容服务，`RELAPAW_MODEL_PROVIDER` 用于如实记录 Provider 名称；超时和最大输出分别由 `RELAPAW_OPENAI_TIMEOUT_SECONDS` 与 `RELAPAW_OPENAI_MAX_OUTPUT_TOKENS` 控制。
+
+阿里云百炼 Qwen 示例（仅填写在 `backend/.env`）：`RELAPAW_MODEL_PROVIDER=qwen`、`RELAPAW_OPENAI_MODEL=qwen3.8-flash`、`RELAPAW_OPENAI_BASE_URL=https://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`，并把百炼 API Key 填入 `OPENAI_API_KEY`。请按实际地域替换端点和 WorkspaceId；不要把真实密钥写入仓库。由于百炼 Responses 接口未列出 Structured Outputs 参数，Qwen 配置会使用同一官方 SDK 的 OpenAI-compatible Chat Completions `parse`；OpenAI 配置仍优先使用 Responses API。
+
 ### 前端
 
 ```powershell
@@ -53,6 +57,6 @@ npm run build
 
 ## 当前阶段
 
-当前为 **Phase 0.1：工程基础加固、UX 架构与入口流程**。现已加入数据库迁移、结构化错误、受控枚举、UTC 输入边界、Timeline 稳定分页、启动/引导/宠物创建流程、当前宠物状态，以及低保真四页信息架构。
+当前为 **Phase 2：文本 Understanding**。应用已具备人工结构化记录、Safety/VeterinaryEscalation、Timeline、复评与观察计划，并可从 NORMAL SafetyCheck 的 Episode 发起结构化文本分析，保存可追溯的 Claim、Evidence、Uncertainty、模型版本和用户逐条决定。
 
-本阶段仍明确不包含真实 LLM、RAG、Agent Loop、图像/视频识别、医学规则判断、自动情绪分类、处方或用药建议，也未开始视觉品牌精修。详见 [产品核心](docs/PRODUCT_CORE.md)、[技术架构](docs/ARCHITECTURE.md)、[UX 架构](docs/UX_ARCHITECTURE.md)、[产品路线](docs/ROADMAP.md) 与 [AI Coding 开发生命周期](docs/development/INDEX.md)。
+真实文本分析使用可选的 OpenAI Responses Adapter；未配置服务端 key/model 时安全返回 `MODEL_NOT_CONFIGURED`。当前仍不包含 RAG、Agent Loop、多模态识别、自动诊断、处方/用药建议或模型自动修改人工记录与 Baseline。详见 [产品核心](docs/PRODUCT_CORE.md)、[技术架构](docs/ARCHITECTURE.md)、[UX 架构](docs/UX_ARCHITECTURE.md)、[产品路线](docs/ROADMAP.md) 与 [AI Coding 开发生命周期](docs/development/INDEX.md)。

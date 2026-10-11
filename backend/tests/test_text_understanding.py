@@ -3,7 +3,7 @@ import pytest
 import app.services.understanding as understanding_service
 from app.main import app
 from app.schemas.analysis import AdapterDescriptor
-from app.services.understanding_adapter import get_text_understanding_adapter
+from app.services.understanding_adapter import AdapterError, DisabledAdapter, get_text_understanding_adapter
 
 
 def complete_payload(pet_id: int, *, safety_result="NORMAL") -> dict:
@@ -44,6 +44,8 @@ class FakeAdapter:
 
     def analyze(self, payload):
         self.calls.append(payload)
+        if self.mode == "provider_timeout":
+            raise AdapterError("MODEL_TIMEOUT", "Model provider request timed out", 504)
         if self.mode == "invalid_contract":
             return {"claims": [{"statement": "missing required fields"}], "diagnosis": "forbidden"}
         evidence_key = "evidence:999999" if self.mode == "foreign_evidence" else payload.evidence[0].key
@@ -155,6 +157,7 @@ def test_invalid_model_results_are_rejected_but_audited(client, pet, mode, expec
 
 def test_disabled_adapter_returns_real_not_configured_state(client, pet):
     episode = create_episode(client, pet["id"])
+    use_adapter(DisabledAdapter())
 
     response = client.post(f"/api/v1/episodes/{episode['id']}/analysis-runs", json={"request_id": "disabled"})
 
@@ -163,6 +166,27 @@ def test_disabled_adapter_returns_real_not_configured_state(client, pet):
     runs = client.get(f"/api/v1/episodes/{episode['id']}/analysis-runs").json()
     assert runs[0]["adapter_name"] == "disabled"
     assert runs[0]["status"] == "FAILED"
+
+
+def test_provider_failure_is_safely_audited_without_partial_claims(client, pet):
+    episode = create_episode(client, pet["id"])
+    adapter = FakeAdapter("provider_timeout")
+    use_adapter(adapter)
+    url = f"/api/v1/episodes/{episode['id']}/analysis-runs"
+
+    response = client.post(url, json={"request_id": "provider-timeout"})
+
+    assert response.status_code == 504
+    assert response.json()["error"] == {
+        "code": "MODEL_TIMEOUT",
+        "message": "Model provider request timed out",
+        "details": None,
+    }
+    runs = client.get(url).json()
+    assert runs[0]["status"] == "FAILED"
+    assert runs[0]["error_code"] == "MODEL_TIMEOUT"
+    assert runs[0]["claims"] == []
+    assert runs[0]["normalized_output"] is None
 
 
 def test_claim_requires_one_final_user_decision(client, pet):
@@ -205,6 +229,36 @@ def test_analysis_snapshot_becomes_stale_and_protects_episode_deletion(client, p
     deletion = client.delete(f"/api/v1/episodes/{episode['id']}")
     assert deletion.status_code == 409
     assert deletion.json()["error"]["code"] == "EPISODE_HAS_ANALYSIS"
+
+
+def test_episode_can_change_while_provider_waits_without_breaking_snapshot(client, pet):
+    episode = create_episode(client, pet["id"])
+
+    class EditingAdapter(FakeAdapter):
+        def analyze(self, payload):
+            update = {
+                "happened_at": episode["happened_at"],
+                "episode_type": episode["episode_type"],
+                "raw_owner_input": "Changed while provider was running",
+                "observations": [{"behavior_type": "pause", "description": "Paused for 30 seconds", "source_type": "owner_direct"}],
+                "owner_interpretations": [{"interpretation": "More context is needed"}],
+            }
+            assert client.put(f"/api/v1/episodes/{episode['id']}", json=update).status_code == 200
+            return super().analyze(payload)
+
+    use_adapter(EditingAdapter())
+
+    response = client.post(
+        f"/api/v1/episodes/{episode['id']}/analysis-runs",
+        json={"request_id": "edit-during-provider"},
+    )
+
+    assert response.status_code == 201
+    run = response.json()
+    assert run["is_stale"] is True
+    assert run["input_snapshot"]["raw_owner_input"] == episode["raw_owner_input"]
+    assert run["claims"][0]["evidence_references"][0]["excerpt"] == episode["raw_owner_input"]
+    assert run["claims"][0]["evidence_references"][0]["evidence_reference_id"] is None
 
 
 def test_analysis_write_failure_rolls_back_whole_aggregate(client, pet, monkeypatch):

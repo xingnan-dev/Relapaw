@@ -100,6 +100,21 @@ describe("text Understanding panel", () => {
     expect(JSON.parse(bodies[0]).request_id).toBe(JSON.parse(bodies[1]).request_id);
   });
 
+  it.each([
+    ["MODEL_AUTHENTICATION_FAILED", "认证或权限配置无效"],
+    ["MODEL_TIMEOUT", "响应超时"],
+    ["MODEL_RATE_LIMITED", "达到调用限制"],
+    ["MODEL_PROVIDER_UNAVAILABLE", "暂时不可用"],
+  ])("shows a safe message for provider error %s", async (code, message) => {
+    vi.stubGlobal("fetch", vi.fn((_input: RequestInfo | URL, init?: RequestInit) => init?.method === "POST"
+      ? json({ error: { code, message: "provider detail must not be displayed" } }, false, 503)
+      : json([])));
+    render(<UnderstandingPanel episode={episode} />); await screen.findByText("尚无 AnalysisRun。");
+    fireEvent.click(screen.getByRole("button", { name: "开始文本分析" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    expect(screen.getByRole("alert")).not.toHaveTextContent("provider detail");
+  });
+
   it("preserves completed content when a confirmation has a network error", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).includes("confirmations") ? Promise.reject(new TypeError("offline")) : json([completedRun])));
     render(<UnderstandingPanel episode={episode} />); const run = await screen.findByLabelText("AnalysisRun 61");

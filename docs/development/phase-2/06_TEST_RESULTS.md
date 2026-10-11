@@ -112,3 +112,55 @@ git diff --check: passed, no output
 - 首轮截图发现的悬浮主操作栏遮挡已修复；修复后按钮位于详情末尾，滚动与底部导航显示正常。
 - 用户于 2026-10-09 明确确认 Slice 2 可运行路径验收通过。
 - completed、逐条决定与 stale 状态继续由测试 FakeAdapter 自动验证；本轮没有为人工演示生成伪结果。
+
+## 2026-10-09 — Slice 3 OpenAI Provider 验证
+
+### 自动测试范围
+
+- Responses `parse` 使用 UnderstandingOutput Structured Outputs，`store=False`，无 tools，输入不含 key。
+- 配置模型名与 Provider 返回的实际模型版本分别持久化。
+- DisabledAdapter 在 key/model 任一缺失时继续返回 `MODEL_NOT_CONFIGURED`。
+- 官方 SDK 认证、权限、timeout、rate limit、connection、响应校验、请求拒绝和服务端错误均映射为稳定安全码。
+- refusal、输出截断和无 parsed output 不进入 completed 聚合。
+- Provider 失败只保存 FAILED AnalysisRun，不保存 normalized output 或部分 Claim。
+- Provider 等待期间允许 Episode 编辑：旧输入快照保持不变、运行立即标记 stale、Evidence 外键置空且快照继续可读。
+- 前端分别展示认证、timeout、rate limit、Provider unavailable 文案并保留 retry。
+- Settings 从服务端环境读取 key/model，SecretStr 的 repr 不暴露 key。
+- 自定义 OpenAI 兼容 base URL 会传给 SDK，Qwen Provider/模型标签被如实保存在 Adapter descriptor；测试 key 不发往网络。
+
+### 隐私与付费边界
+
+- 自动测试全部使用 fake SDK client 或 FastAPI dependency override，没有访问真实 OpenAI API。
+- 检查时环境中 `OPENAI_API_KEY` 与 `RELAPAW_OPENAI_MODEL` 均不存在，因此未请求也未执行付费 smoke test。
+- `.env.example` 只含空占位符；`.env`、构建产物、pytest cache 和 Python bytecode继续被 Git 忽略。
+
+### 2026-10-10 Qwen 最小真实 smoke test
+
+- 在用户明确授权后，使用服务端 `.env` 中的百炼 OpenAI 兼容 Responses 端点与 `qwen3.8-flash` 发起一次最小请求。
+- 请求在配置的 20 秒严格 timeout 内未返回，结果为 `MODEL_TIMEOUT`；`max_retries=0` 生效，没有自动重试。
+- 测试未写数据库、未打印或保存 API Key、未生成或保存部分 Claim。该结果只证明 timeout/error mapping 的真实链路生效，尚未证明 Qwen 对当前 Structured Outputs 契约完全兼容。
+- timeout 调整为 60 秒后再次获得可判定响应：`qwen3.8-flash` 在约 24 秒返回 Markdown，而非请求的 UnderstandingOutput JSON，因此官方 OpenAI SDK 的 Pydantic parse 抛出 ValidationError。该结果确认当前百炼 Responses 兼容层未履行本项目所需的 Structured Outputs 契约，不能作为 completed 结果保存。
+- Adapter 已补充 SDK Pydantic parse 失败到 `MODEL_OUTPUT_INVALID` 的安全映射和回归测试；不保存 Provider 原文或部分结果。
+- 根据官方能力边界新增 Qwen Chat Completions Structured Outputs 路径：mock 测试覆盖 Pydantic schema、关闭 thinking、无 tools、无输出 token 截断、模型版本审计，以及 length/content-filter/refusal/缺失 parsed output 的稳定映射。尚未对新路径发起真实付费请求。
+
+### 2026-10-11 Qwen Chat Structured Outputs 真实验证
+
+- 经用户明确授权，使用 `qwen3.8-flash` 对新的 `qwen-openai-chat-completions` 路径执行一次最小真实请求。
+- 请求约 6 秒完成，返回 `understanding-output/v1`，包含 1 条通过 Pydantic 校验的 Claim；所有 Evidence key 均属于输入集合。
+- Provider 与解析模型均记录为 `qwen` / `qwen3.8-flash`。测试不写数据库、不保存测试 Claim、不输出密钥、无自动重试。
+- 该结果验证了百炼 OpenAI-compatible Chat Completions JSON Schema 路径与现有 Understanding 契约兼容；未执行第二次请求。
+- 浏览器端真实 AnalysisRun #3 完成并展示模型/契约、Claim、Evidence 与 Uncertainty；用户成功将 Claim 标记为 REJECTED，页面明确说明该决定不会修改原始记录，历史失败运行继续保留。
+
+### 最终结果
+
+```text
+backend: 76 passed
+frontend: 2 files passed, 45 tests passed
+production build: tsc -b + vite build passed, 27 modules transformed
+alembic current: 20261009_0005 (head)
+alembic check: No new upgrade operations detected
+pip check: No broken requirements found
+git diff --check: passed, no output
+```
+
+数据库模型未变化，没有新增或修改 migration。依赖锁定为 OpenAI Python SDK `>=3.26,<3.27`；本地验证安装版本为 3.26.1。

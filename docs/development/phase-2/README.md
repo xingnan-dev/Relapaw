@@ -2,7 +2,7 @@
 
 Phase：文本 Understanding
 启动日期：2026-10-09
-状态：Slice 2 前端文本 Understanding 闭环完成；真实 Provider 暂不接入
+状态：Slice 3 OpenAI Responses Provider 已实现，等待配置凭据后的人工 smoke test
 
 ## 阶段目标
 
@@ -33,8 +33,9 @@ Phase：文本 Understanding
 
 ## 当前边界
 
-- 未选择或安装模型 SDK，不配置真实密钥；默认 Adapter 明确返回 `MODEL_NOT_CONFIGURED`。
+- 已接入官方 OpenAI Python SDK 与 Responses Structured Outputs；模型由 `RELAPAW_OPENAI_MODEL` 配置，密钥只从服务端 `OPENAI_API_KEY` 读取。
 - 未修改任何既有 migration；新增 revision `20261009_0005`。
 - 已完成后端契约、持久化、仅 NORMAL 放行的 Safety 门禁、审计/确认 API，以及 Episode 详情内的前端分析、历史、stale 与逐条决定闭环。
-- 产品默认 Adapter 仍明确返回 `MODEL_NOT_CONFIGURED`；completed UI 仅由后端合法运行（自动测试中为 FakeAdapter）驱动，不生成前端伪结果。
-- 本阶段修改保持未提交，不 push。
+- 缺少 key 或 model 时仍使用 DisabledAdapter 并明确返回 `MODEL_NOT_CONFIGURED`，不生成替代结果。
+- Provider 请求禁用工具与服务端存储，使用严格 timeout、零 SDK 自动重试和稳定错误映射；本轮不接 RAG、Agent、多模态或诊断。
+- Slice 3 修改保持未提交，不 push。

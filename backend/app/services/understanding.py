@@ -12,6 +12,7 @@ from app.models import (
     Claim,
     ClaimEvidenceReference,
     Episode,
+    EvidenceReference,
     Uncertainty,
     UserConfirmation,
 )
@@ -143,6 +144,10 @@ def execute_analysis(db: Session, episode_id: int, payload: AnalysisRunCreate, a
         db.flush()
         return get_analysis_run(db, run.id) or run
 
+    # The snapshot and source timestamp are now immutable for this run. End the
+    # read transaction before waiting on a remote provider; persistence below
+    # starts a new, short transaction for either FAILED or COMPLETED state.
+    db.commit()
     try:
         output = UnderstandingOutput.model_validate(adapter.analyze(input_data))
     except AdapterError as exc:
@@ -168,6 +173,18 @@ def execute_analysis(db: Session, episode_id: int, payload: AnalysisRunCreate, a
     db.add(run)
     db.flush()
     source_rows = {f"evidence:{item.id}": item for item in episode.evidence_references}
+    source_ids = [item.id for item in episode.evidence_references]
+    db.refresh(episode, attribute_names=["updated_at"])
+    current_updated_at = episode.updated_at
+    source_updated_at = run.source_episode_updated_at
+    if current_updated_at.tzinfo is None:
+        current_updated_at = current_updated_at.replace(tzinfo=timezone.utc)
+    if source_updated_at.tzinfo is None:
+        source_updated_at = source_updated_at.replace(tzinfo=timezone.utc)
+    source_changed = current_updated_at > source_updated_at
+    live_evidence_ids = set(db.scalars(
+        select(EvidenceReference.id).where(EvidenceReference.id.in_(source_ids))
+    ).all()) if source_ids and not source_changed else set()
     for proposal in output.claims:
         claim = Claim(
             analysis_run_id=run.id,
@@ -180,7 +197,11 @@ def execute_analysis(db: Session, episode_id: int, payload: AnalysisRunCreate, a
         db.flush()
         claim.evidence_references = [ClaimEvidenceReference(
             claim_id=claim.id,
-            evidence_reference_id=source_rows[item.evidence_key].id,
+            evidence_reference_id=(
+                source_rows[item.evidence_key].id
+                if source_rows[item.evidence_key].id in live_evidence_ids
+                else None
+            ),
             source_type=evidence_by_key[item.evidence_key].source_type,
             source_id=evidence_by_key[item.evidence_key].source_id,
             field_path=evidence_by_key[item.evidence_key].field_path,
@@ -193,6 +214,7 @@ def execute_analysis(db: Session, episode_id: int, payload: AnalysisRunCreate, a
             claim_id=claim.id, kind=item.kind.value, description=item.description
         ) for item in proposal.uncertainties]
     db.flush()
+    db.expire(episode)
     return get_analysis_run(db, run.id) or run
 
 
