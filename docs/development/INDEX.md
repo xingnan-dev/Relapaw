@@ -36,3 +36,4 @@
 - [Phase 1（无 AI 的结构化记录闭环）](phase-1/README.md)
 - [Phase 2（文本 Understanding）](phase-2/README.md)
 - [Lightweight Design System](design-system/README.md)
+- [Phase 3（长期记忆投影与量化 Baseline）](phase-3/README.md)

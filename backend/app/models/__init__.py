@@ -7,6 +7,8 @@ from app.models.entities import (
     EpisodePlanLink,
     EvidenceReference,
     LifeEvent,
+    MemoryCandidate,
+    MemoryDecision,
     Observation,
     ObservationPlan,
     ObservationPlanItem,
@@ -25,4 +27,5 @@ __all__ = [
     "OwnerInterpretation", "LifeEvent", "ObservationPlan", "ObservationPlanItem", "VeterinaryEscalation",
     "SafetyCheck", "EvidenceReference", "EpisodePlanLink", "EpisodeFollowUp",
     "AnalysisRun", "Claim", "ClaimEvidenceReference", "Uncertainty", "UserConfirmation",
+    "MemoryCandidate", "MemoryDecision",
 ]

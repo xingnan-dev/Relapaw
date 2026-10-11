@@ -289,7 +289,7 @@ SafetyCheck = ESCALATE_TO_VET
 当前 Phase 0–2、比赛 AI Coding 证据框架和轻量 Design System 均已关闭并通过人工确认。按本指引，下一步只能是：
 
 ```text
-Phase 3：长期记忆投影与量化 Baseline
+Phase 3 Slice 1：commit 授权门禁
 ```
 
-Phase 3 必须先完成现状审计、Requirements、Architecture、Scope 与 Acceptance，再进入 migration 或功能实现；不得跳到 RAG、多模态或完整视觉重构。
+Phase 3 Slice 1 的候选、追加式决定、migration、API、自动测试和人工验收均已完成。下一步只能在用户明确授权后 commit；commit 后重新检查是否适合 push，并单独取得 push 授权。Git 门禁关闭后才进入 Slice 2 量化 Baseline，不得跳到 RAG、多模态或完整视觉重构。

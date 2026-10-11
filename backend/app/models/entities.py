@@ -24,6 +24,7 @@ class Pet(Base):
     episodes: Mapped[list["Episode"]] = relationship(back_populates="pet", cascade="all, delete-orphan")
     life_events: Mapped[list["LifeEvent"]] = relationship(back_populates="pet", cascade="all, delete-orphan")
     observation_plans: Mapped[list["ObservationPlan"]] = relationship(back_populates="pet", cascade="all, delete-orphan")
+    memory_candidates: Mapped[list["MemoryCandidate"]] = relationship(back_populates="pet", cascade="all, delete-orphan")
 
 
 class OwnerProfile(Base):
@@ -287,6 +288,7 @@ class Claim(Base):
     evidence_references: Mapped[list["ClaimEvidenceReference"]] = relationship(back_populates="claim", cascade="all, delete-orphan", order_by="ClaimEvidenceReference.id")
     uncertainties: Mapped[list["Uncertainty"]] = relationship(back_populates="claim", cascade="all, delete-orphan", order_by="Uncertainty.id")
     confirmations: Mapped[list["UserConfirmation"]] = relationship(back_populates="claim", cascade="all, delete-orphan", order_by="UserConfirmation.id")
+    memory_candidate: Mapped["MemoryCandidate | None"] = relationship(back_populates="claim", cascade="all, delete-orphan", uselist=False)
 
 
 class ClaimEvidenceReference(Base):
@@ -335,3 +337,59 @@ class UserConfirmation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     claim: Mapped[Claim] = relationship(back_populates="confirmations")
+
+
+class MemoryCandidate(Base):
+    __tablename__ = "memory_candidates"
+    __table_args__ = (UniqueConstraint("claim_id", name="uq_memory_candidates_claim_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pet_id: Mapped[int] = mapped_column(ForeignKey("pets.id", ondelete="CASCADE"), index=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id", ondelete="CASCADE"), index=True)
+    claim_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    evidence_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    uncertainty_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    model_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    source_episode_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    pet: Mapped[Pet] = relationship(back_populates="memory_candidates")
+    claim: Mapped[Claim] = relationship(back_populates="memory_candidate")
+    decisions: Mapped[list["MemoryDecision"]] = relationship(
+        back_populates="candidate", cascade="all, delete-orphan", order_by="MemoryDecision.id"
+    )
+
+    @property
+    def is_stale(self) -> bool:
+        source = self.source_episode_updated_at
+        current = self.claim.analysis_run.episode.updated_at
+        if source.tzinfo is None:
+            source = source.replace(tzinfo=timezone.utc)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=timezone.utc)
+        return current > source
+
+    @property
+    def state(self) -> str:
+        if self.is_stale:
+            return "STALE"
+        if not self.decisions:
+            return "ELIGIBLE"
+        return "ACTIVE" if self.decisions[-1].decision == "INCLUDE" else "WITHDRAWN"
+
+
+class MemoryDecision(Base):
+    __tablename__ = "memory_decisions"
+    __table_args__ = (
+        UniqueConstraint("candidate_id", "request_id", name="uq_memory_decision_candidate_request"),
+        CheckConstraint("decision IN ('INCLUDE', 'WITHDRAW')", name="ck_memory_decision_type"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("memory_candidates.id", ondelete="CASCADE"), index=True)
+    request_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    decision: Mapped[str] = mapped_column(String(20), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    candidate: Mapped[MemoryCandidate] = relationship(back_populates="decisions")

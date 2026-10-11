@@ -96,6 +96,18 @@ class ConfirmationDecision(StringEnum):
     REJECTED = "REJECTED"
 
 
+class MemoryDecisionType(StringEnum):
+    INCLUDE = "INCLUDE"
+    WITHDRAW = "WITHDRAW"
+
+
+class MemoryCandidateState(StringEnum):
+    ELIGIBLE = "ELIGIBLE"
+    ACTIVE = "ACTIVE"
+    WITHDRAWN = "WITHDRAWN"
+    STALE = "STALE"
+
+
 class LifeEventType(StringEnum):
     MOVING = "moving"
     NEW_PET = "new_pet"
