@@ -9,11 +9,11 @@
 
 ## Slice 2：量化算法与快照
 
-- [ ] 纯函数覆盖 7/30/90/all 窗口、UTC 边界和 `as_of`。
-- [ ] duration/frequency/intensity/measured_value 按字段、behavior_type 和 unit 正确分组。
-- [ ] count/min/max/median、EMPTY、INSUFFICIENT_DATA 和趋势门槛有测试。
-- [ ] 不从自然语言或 Claim 推断数值。
-- [ ] 同 fingerprint 重算幂等；来源变化创建新快照并使旧快照 stale。
+- [x] 纯函数覆盖 7/30/90/all 窗口、UTC 边界和 `as_of`。
+- [x] duration/frequency/intensity/measured_value 按字段、behavior_type 和 unit 正确分组。
+- [x] count/min/max/median、EMPTY、INSUFFICIENT_DATA 和趋势门槛有测试。
+- [x] 不从自然语言或 Claim 推断数值。
+- [x] 同 fingerprint 重算幂等；来源变化创建新快照并使旧快照 stale。
 
 ## Slice 3：Evidence lineage 与生命周期
 

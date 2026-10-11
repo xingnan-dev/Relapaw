@@ -47,6 +47,10 @@ BaselineEvidence
 
 所有时间先规范化为 UTC。有限窗口采用 `window_start <= happened_at <= as_of`；全部历史采用 `happened_at <= as_of`。未来时间 Episode 不进入当前快照。`as_of` 必须带时区，响应返回规范化 UTC。
 
+有限窗口的趋势对照使用紧邻之前、等长且不重叠的区间：`comparison_start <= happened_at < window_start`。当前和对照指标都至少有 3 个样本时才比较中央値；相对变化达到 `20%` 标记 `INCREASED/DECREASED`，否则为 `STABLE`。对照中位数为 0 时，当前也为 0 才是 `STABLE`，当前大于 0 为 `INCREASED`。`all` 不生成趋势。
+
+Snapshot 的 `sample_count` 是当前窗口内参与计算的 Episode 数。Episode 类型频率单独报告 `count` 和 UTC 日期口径的 `observation_days`，不转换为评分。
+
 ## P3-006：Source fingerprint 与不可变快照
 
 fingerprint 由参与计算的 pet、Episode/Observation ID、更新时间、时间和结构化数值规范化后哈希得到。读取旧快照时以当前同窗口来源重新计算 fingerprint 判定 stale。重算只新增快照；lineage 保存字段和值快照，外键删除时 SET NULL。

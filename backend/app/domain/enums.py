@@ -108,6 +108,19 @@ class MemoryCandidateState(StringEnum):
     STALE = "STALE"
 
 
+class BaselineWindow(StringEnum):
+    DAYS_7 = "7d"
+    DAYS_30 = "30d"
+    DAYS_90 = "90d"
+    ALL = "all"
+
+
+class BaselineSnapshotStatus(StringEnum):
+    READY = "READY"
+    INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
+    EMPTY = "EMPTY"
+
+
 class LifeEventType(StringEnum):
     MOVING = "moving"
     NEW_PET = "new_pet"

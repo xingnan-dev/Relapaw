@@ -83,3 +83,35 @@ GET  /api/v1/pets/{pet_id}/long-term-memory
 - 用户明确回复“Phase 3 Slice 1 人工验收通过”。
 - 验收范围为后端候选/纳入/撤回/stale/回滚行为；Slice 1 没有前端页面。
 - 当前进入 Git commit 授权门禁；尚未 commit、尚未 push，Slice 2 尚未开始。
+
+## 2026-10-12 — Slice 2 实现
+
+### 已实现
+
+- 新增 migration `20261012_0007` 与独立 `BaselineSnapshot`，未修改人工 `PetBaseline` 或旧 migration。
+- 实现 `quantitative-baseline/v1` 纯函数：7/30/90/all、UTC 边界、未来记录排除、等长前置对照窗口。
+- 聚合 Episode `duration_seconds/frequency_count/intensity` 及 Observation `measured_value`；后者严格按 `behavior_type + unit` 分组，不换算单位。
+- 每个数值指标输出 count/min/max/median；每种 Episode 类型输出 count/observation_days。
+- 每项最少 3 个样本；当前与对照均满足时才使用 20% 中位数变化门槛生成趋势。
+- `source_fingerprint` 只基于结构化来源、ID、时间与更新时间；相同身份重算幂等，来源变化后旧快照动态 stale。
+- 实现 recompute、latest 和 snapshot detail API；不调用模型，不读取自然语言生成数值。
+
+### API
+
+```text
+POST /api/v1/pets/{pet_id}/baseline-snapshots/recompute
+GET  /api/v1/pets/{pet_id}/baseline-snapshots/latest?window=7d|30d|90d|all
+GET  /api/v1/baseline-snapshots/{snapshot_id}
+```
+
+### 范围边界
+
+- Slice 2 暂不建立字段级 `BaselineEvidence`；该 lineage 与删除生命周期固定留在 Slice 3。
+- Slice 2 没有前端变更；展示与交互固定留在 Slice 4。
+
+## 2026-10-12 — Slice 2 人工验收
+
+- 用户在本地执行 `tests/test_quantitative_baselines.py -v`，截图显示 11 项专项测试全部通过。
+- 用户明确回复“Phase 3 Slice 2 人工验收通过”。
+- 验收覆盖窗口边界、单位隔离、样本门槛、趋势、fingerprint、幂等重算、stale 及人工 Baseline 隔离。
+- 当前进入 Git commit 授权门禁；尚未 commit、尚未 push，Slice 3 尚未开始。

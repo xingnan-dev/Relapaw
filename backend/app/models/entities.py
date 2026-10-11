@@ -1,5 +1,5 @@
 from datetime import date, datetime, timezone
-from typing import Any
+from typing import Any, ClassVar
 
 from sqlalchemy import JSON, Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -25,6 +25,7 @@ class Pet(Base):
     life_events: Mapped[list["LifeEvent"]] = relationship(back_populates="pet", cascade="all, delete-orphan")
     observation_plans: Mapped[list["ObservationPlan"]] = relationship(back_populates="pet", cascade="all, delete-orphan")
     memory_candidates: Mapped[list["MemoryCandidate"]] = relationship(back_populates="pet", cascade="all, delete-orphan")
+    baseline_snapshots: Mapped[list["BaselineSnapshot"]] = relationship(back_populates="pet", cascade="all, delete-orphan")
 
 
 class OwnerProfile(Base):
@@ -393,3 +394,38 @@ class MemoryDecision(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     candidate: Mapped[MemoryCandidate] = relationship(back_populates="decisions")
+
+
+class BaselineSnapshot(Base):
+    __tablename__ = "baseline_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "pet_id", "window", "as_of", "algorithm_version", "source_fingerprint",
+            name="uq_baseline_snapshot_identity",
+        ),
+        CheckConstraint("window IN ('7d', '30d', '90d', 'all')", name="ck_baseline_snapshot_window"),
+        CheckConstraint(
+            "status IN ('READY', 'INSUFFICIENT_DATA', 'EMPTY')",
+            name="ck_baseline_snapshot_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pet_id: Mapped[int] = mapped_column(ForeignKey("pets.id", ondelete="CASCADE"), index=True)
+    window: Mapped[str] = mapped_column(String(10), nullable=False)
+    window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    algorithm_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    sample_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    metrics_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    pet: Mapped[Pet] = relationship(back_populates="baseline_snapshots")
+    _is_stale: ClassVar[bool] = False
+
+    @property
+    def is_stale(self) -> bool:
+        return self._is_stale
