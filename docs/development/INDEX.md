@@ -1,5 +1,9 @@
 # AI Coding Development Record
 
+全项目固定执行顺序、阶段门禁、commit/push 标准与变更控制见 [Relapaw 项目完整执行指引](../PROJECT_EXECUTION_GUIDE.md)。后续阶段不得绕过该指引临时改变顺序。
+
+比赛要求、AI 工具用途、完整协作流程、真实交互案例、第三方来源与 Git 证据见 [比赛 AI Coding 证据框架](../competition/07_COMPETITION_REQUIREMENTS_MATRIX.md)。
+
 本目录是比赛材料与工程审计记录，不是宣传性总结。记录必须能够区分 AI 输出、人工决策、实际代码修改、原始测试结果和 Git 历史。
 
 ## 每个 Phase 的标准材料

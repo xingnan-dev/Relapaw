@@ -1,5 +1,7 @@
 # Relapaw Product and Engineering Roadmap
 
+具体执行顺序与不可跳过的阶段门禁以 [项目完整执行指引](PROJECT_EXECUTION_GUIDE.md) 为准；路线调整必须先走该指引中的变更控制流程。
+
 更新日期：2026-10-11
 
 ## 长期目标
@@ -40,11 +42,11 @@ React + TypeScript + FastAPI + Pydantic + SQLAlchemy
 ## 近期执行顺序
 
 ```text
-Phase 2 收尾
-  -> AI Code Review / Fix and Regression / Acceptance
-  -> 经授权提交收尾材料
+Phase 2 已关闭
+  -> 比赛 AI Coding 证据框架（已验收）
+  -> 轻量 Design System
   -> Phase 3 Scope / Acceptance Criteria
   -> 长期记忆投影与量化 Baseline 设计
 ```
 
-Phase 3 才定义已确认 Claim 是否、何时以及如何进入可重算长期记忆投影。当前不提前实现 RAG、Agent、多模态、自动医疗判断或 Pet↔Pet 数据模型。
+轻量 Design System 只冻结基础视觉语言和核心状态，不重写业务逻辑。Phase 3 才定义已确认 Claim 是否、何时以及如何进入可重算长期记忆投影。当前不提前实现 RAG、Agent、多模态、自动医疗判断或 Pet↔Pet 数据模型。
