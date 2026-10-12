@@ -89,6 +89,22 @@ def evaluate_case(case: dict[str, Any]) -> CaseResult:
     return _result(case_id, expected_pass, expected_errors, sorted(errors))
 
 
+def evaluate_payload(
+    *, case_id: str, input_data: dict[str, Any], candidate_output: dict[str, Any] | None
+) -> list[str]:
+    """Return deterministic errors without attaching a frozen expectation."""
+    result = evaluate_case(
+        {
+            "id": case_id,
+            "input": input_data,
+            "candidate_output": candidate_output,
+            "expected_pass": True,
+            "expected_error_codes": [],
+        }
+    )
+    return result.actual_error_codes
+
+
 def _result(
     case_id: str,
     expected_pass: bool,

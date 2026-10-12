@@ -1,0 +1,69 @@
+{
+  "version": "recorded-output-eval/v1",
+  "groups": [
+    {
+      "descriptor": {
+        "adapter_name": "recorded-qwen-chat",
+        "model_provider": "qwen",
+        "model_name": "qwen3.8-flash",
+        "model_version": "recorded-2026-10-12",
+        "prompt_contract_version": "text-understanding/v3-provider-neutral"
+      },
+      "cases": [
+        {"id": "auth-error", "provider_error": "MODEL_AUTHENTICATION_FAILED", "expected_error_codes": ["MODEL_AUTHENTICATION_FAILED"]},
+        {"id": "permission-error", "provider_error": "MODEL_PERMISSION_DENIED", "expected_error_codes": ["MODEL_PERMISSION_DENIED"]},
+        {"id": "timeout-error", "provider_error": "MODEL_TIMEOUT", "expected_error_codes": ["MODEL_TIMEOUT"]},
+        {"id": "rate-limit-error", "provider_error": "MODEL_RATE_LIMITED", "expected_error_codes": ["MODEL_RATE_LIMITED"]},
+        {"id": "network-error", "provider_error": "MODEL_NETWORK_ERROR", "expected_error_codes": ["MODEL_NETWORK_ERROR"]},
+        {"id": "invalid-output", "provider_error": "MODEL_OUTPUT_INVALID", "expected_error_codes": ["MODEL_OUTPUT_INVALID"]},
+        {"id": "incomplete-output", "provider_error": "MODEL_OUTPUT_INCOMPLETE", "expected_error_codes": ["MODEL_OUTPUT_INCOMPLETE"]},
+        {"id": "refusal", "provider_error": "MODEL_REFUSED", "expected_error_codes": ["MODEL_REFUSED"]},
+        {"id": "request-rejected", "provider_error": "MODEL_REQUEST_REJECTED", "expected_error_codes": ["MODEL_REQUEST_REJECTED"]},
+        {"id": "provider-unavailable", "provider_error": "MODEL_PROVIDER_UNAVAILABLE", "expected_error_codes": ["MODEL_PROVIDER_UNAVAILABLE"]},
+        {"id": "provider-error", "provider_error": "MODEL_PROVIDER_ERROR", "expected_error_codes": ["MODEL_PROVIDER_ERROR"]},
+        {
+          "id": "reviewed-valid-output",
+          "input": {
+            "episode_id": 20,
+            "pet_id": 1,
+            "raw_owner_input": "豆包听到门外声音后停在门口约二十秒。",
+            "observations": [{"id": 20, "description": "听到门外声音后停在门口约二十秒", "behavior_type": "pause"}],
+            "owner_interpretations": [{"id": 20, "interpretation": "它可能想继续出去"}],
+            "safety_status": "NORMAL",
+            "evidence": [{"key": "observation:20:description", "source_type": "OBSERVATION", "source_id": 20, "field_path": "description", "observed_at": "2026-10-12T10:00:00Z", "recorded_at": "2026-10-12T10:01:00Z", "excerpt": "听到门外声音后停在门口约二十秒"}]
+          },
+          "recorded_output": {"claims": [{"claim_type": "BEHAVIORAL_CONTEXT", "statement": "这次停留可能与对门外声音的短暂关注有关。", "confidence_label": "MEDIUM", "evidence": [{"evidence_key": "observation:20:description", "role": "SUPPORTS"}], "uncertainties": [{"kind": "ALTERNATIVE_EXPLANATION", "description": "也可能只是散步结束后的习惯性停顿。"}]}]},
+          "human_review": {"observation_interpretation_separated": true, "unsupported_assertions_absent": true, "confidence_calibrated": true},
+          "expected_error_codes": []
+        },
+        {
+          "id": "reviewed-semantic-failures",
+          "input": {
+            "episode_id": 21,
+            "pet_id": 1,
+            "raw_owner_input": "豆包在门口停留。",
+            "observations": [{"id": 21, "description": "在门口停留", "behavior_type": "pause"}],
+            "owner_interpretations": [{"id": 21, "interpretation": "它一定想出去"}],
+            "safety_status": "NORMAL",
+            "evidence": [{"key": "observation:21:description", "source_type": "OBSERVATION", "source_id": 21, "field_path": "description", "observed_at": "2026-10-12T10:00:00Z", "recorded_at": "2026-10-12T10:01:00Z", "excerpt": "在门口停留"}]
+          },
+          "recorded_output": {"claims": [{"claim_type": "BEHAVIORAL_CONTEXT", "statement": "这次停留可能与门口环境有关。", "confidence_label": "HIGH", "evidence": [{"evidence_key": "observation:21:description", "role": "SUPPORTS"}], "uncertainties": [{"kind": "MISSING_CONTEXT", "description": "没有记录门外环境。"}]}]},
+          "human_review": {"observation_interpretation_separated": false, "unsupported_assertions_absent": false, "confidence_calibrated": false},
+          "expected_error_codes": ["REVIEW_CONFIDENCE_CALIBRATION", "REVIEW_INTERPRETATION_BOUNDARY", "REVIEW_UNSUPPORTED_ASSERTION"]
+        }
+      ]
+    },
+    {
+      "descriptor": {
+        "adapter_name": "recorded-openai-responses",
+        "model_provider": "openai",
+        "model_name": "evaluation-fixture",
+        "model_version": "recorded-2026-10-12",
+        "prompt_contract_version": "text-understanding/v3-provider-neutral"
+      },
+      "cases": [
+        {"id": "second-group-refusal", "provider_error": "MODEL_REFUSED", "expected_error_codes": ["MODEL_REFUSED"]}
+      ]
+    }
+  ]
+}

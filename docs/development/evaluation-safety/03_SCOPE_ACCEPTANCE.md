@@ -2,16 +2,16 @@
 
 ## Slice 1：离线确定性评估基线
 
-- [ ] 版本化 JSON 数据集覆盖正常、非 NORMAL、非法 Evidence、越界内容和语言不跟随。
-- [ ] 运行器复用 `UnderstandingInput/Output`，输出稳定错误码与汇总指标。
-- [ ] 测试证明运行器无 Adapter/网络依赖，并能识别期待结果漂移。
-- [ ] CLI 可重复生成机器可读 JSON 报告。
+- [x] 版本化 JSON 数据集覆盖正常、非 NORMAL、非法 Evidence、越界内容和语言不跟随。
+- [x] 运行器复用 `UnderstandingInput/Output`，输出稳定错误码与汇总指标。
+- [x] 测试证明运行器无 Adapter/网络依赖，并能识别期待结果漂移。
+- [x] CLI 可重复生成机器可读 JSON 报告。
 
 ## Slice 2：Provider mock 与 recorded-output 评估
 
-- [ ] 覆盖所有稳定 Provider 错误码、非法 JSON、拒绝和截断。
-- [ ] 覆盖 Observation/Interpretation 冲突、信息不足、无依据断言与过度确定。
-- [ ] 报告按 Prompt/模型/契约版本分组，不混合不可比结果。
+- [x] 覆盖所有稳定 Provider 错误码、非法 JSON、拒绝和截断。
+- [x] 覆盖 Observation/Interpretation 冲突、信息不足、无依据断言与过度确定。
+- [x] 报告按 Prompt/模型/契约版本分组，不混合不可比结果。
 
 ## Slice 3：最小真实 Provider 评估
 

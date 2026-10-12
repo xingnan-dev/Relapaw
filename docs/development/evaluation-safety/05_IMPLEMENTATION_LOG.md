@@ -15,3 +15,12 @@
 - 稳定错误码：`SAFETY_OUTPUT_PRESENT`、`OUTPUT_MISSING`、`CONTRACT_INVALID`、`EVIDENCE_INVALID`、`PROHIBITED_CONTENT`、`LANGUAGE_MISMATCH`。
 - CLI 以 JSON 输出逐案例结果和总匹配率；仅在全部冻结期待匹配时返回成功退出码。
 - 下一步固定为人工验收门禁；未验收前不进入 Slice 2。
+
+## 2026-10-12 — Slice 2 实施
+
+- 新增 `recorded_outputs_v1.json`，包含 14 个录制案例和 2 个独立版本分组。
+- 覆盖 Adapter 的 11 个稳定 Provider 错误码，包括认证、权限、超时、限流、网络、非法/截断输出、拒绝和 Provider 故障。
+- 录制输出复用 Slice 1 硬门禁；人工语义 Review 独立记录边界分离、无依据断言和置信度校准。
+- 报告按完整 Adapter/模型/Prompt/输入/输出契约版本分组，避免混合不可比结果。
+- 运行器固定报告 `recorded_only: true` 和 `network_calls: 0`；未读取密钥、未连接 Provider、未写产品数据库。
+- 下一步固定为人工验收门禁；未验收、commit 和 push 前不进入 Slice 3。

@@ -20,3 +20,15 @@
 ```
 
 本轮没有调用真实 Provider，没有产生模型费用，也没有写入产品数据库。
+
+## 2026-10-12 — Slice 2
+
+| 检查 | 结果 |
+| --- | --- |
+| recorded-output CLI | 14/14 冻结期待匹配，2 个版本分组均为 100% |
+| Evaluation + Adapter 专项测试 | 31 passed |
+| 后端全量测试 | 104 passed |
+| 前端全量测试 | 56 passed |
+| 前端生产构建 | passed |
+
+本轮 `network_calls: 0`，没有真实 Provider 请求、模型费用、密钥读取或产品数据库写入。

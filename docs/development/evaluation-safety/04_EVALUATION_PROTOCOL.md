@@ -24,3 +24,17 @@
 ## 运行边界
 
 Slice 1 命令只读取仓库内 JSON 并进行本地校验，不实例化 Adapter，不读取 API key，不访问网络。报告输出到 stdout；是否保存为制品由后续 CI/比赛材料阶段决定。
+
+## Slice 2：录制输出协议
+
+- 每组必须包含完整 `AdapterDescriptor`；分组键固定包含 Provider、模型名、模型版本、Prompt 契约、输入契约和输出契约。
+- Provider 失败以稳定错误码录制，运行时不会重放网络请求。
+- 输出先经过 Slice 1 硬门禁，再叠加显式人工 Review：Observation/Interpretation 分离、无依据断言和置信度校准。
+- 人工 Review 结论是可审计标注，不宣称由词法规则自动完成。
+- 不同分组分别计算 `expectation_match_rate`，不得合并成一个模型质量结论。
+
+复现命令（从 `backend` 目录执行）：
+
+```powershell
+.\.venv\Scripts\python.exe -m app.evaluation.recorded_outputs evals\recorded_outputs_v1.json
+```
