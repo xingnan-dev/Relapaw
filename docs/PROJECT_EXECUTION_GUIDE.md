@@ -286,10 +286,10 @@ SafetyCheck = ESCALATE_TO_VET
 
 ## 15. 当前唯一下一步
 
-当前 Phase 0–2、比赛 AI Coding 证据框架和轻量 Design System 均已关闭并通过人工确认。按本指引，下一步只能是：
+当前 Phase 0–2、比赛 AI Coding 证据框架和轻量 Design System 均已关闭。Phase 3 Slice 1–3 已实现、验收并推送；Slice 4 前端代码、自动回归和浏览器人工验收已完成。按本指引，下一步只能是：
 
 ```text
-Phase 3 Slice 3：commit 授权门禁
+Phase 3 Slice 4：commit 授权门禁
 ```
 
-Phase 3 Slice 1–2 已完成并推送。Slice 3 的字段级 lineage、stale/recompute 生命周期、删除保留、migration、事务回滚测试和人工验收均已完成。下一步只能在用户明确授权后 commit；commit 后重新检查是否适合 push，并单独取得 push 授权。Git 门禁关闭后才进入 Slice 4 前端闭环，不得跳到 RAG、多模态或完整视觉重构。
+人工验收已覆盖移动端与桌面布局、键盘操作、候选纳入/撤回/重纳入、失败保态、四种窗口、INSUFFICIENT_DATA、重算和长来源列表。现在只能在用户明确授权后 commit；完成提交审查后才判断是否适合 push，并再次取得明确 push 授权。不得跳到 Evaluation、RAG、多模态或完整视觉重构。

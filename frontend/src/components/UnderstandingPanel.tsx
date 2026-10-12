@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, createAnalysisRun, decideClaim, listAnalysisRuns } from "../api";
+import { ApiError, createAnalysisRun, createMemoryCandidate, decideClaim, listAnalysisRuns } from "../api";
 import type { AnalysisClaim, AnalysisRun, ConfirmationDecision, Episode } from "../types";
 import { Button, StatusNotice } from "./ui";
 
@@ -128,13 +128,15 @@ function AnalysisRunView({ run, onDecision }: { run: AnalysisRun; onDecision: (c
     <dl className="contract-meta"><dt>模型</dt><dd>{run.model_provider} / {run.model_name} / {run.model_version}</dd><dt>Adapter</dt><dd>{run.adapter_name}</dd><dt>Prompt 契约</dt><dd>{run.prompt_contract_version}</dd><dt>输入契约</dt><dd>{run.input_contract_version}</dd><dt>输出契约</dt><dd>{run.output_contract_version}</dd></dl>
     {run.status === "BLOCKED_BY_SAFETY" && <StatusNotice tone="danger" title="Safety blocked">没有调用模型，也没有生成 Claim。</StatusNotice>}
     {run.status === "FAILED" && <StatusNotice tone="warning">此运行失败，没有可确认的模型结果。</StatusNotice>}
-    {run.claims.map((claim) => <ClaimView key={claim.id} claim={claim} onDecision={onDecision} />)}
+    {run.claims.map((claim) => <ClaimView key={claim.id} claim={claim} runStale={run.is_stale} onDecision={onDecision} />)}
   </article>;
 }
 
-function ClaimView({ claim, onDecision }: { claim: AnalysisClaim; onDecision: (claimId: number, decision: ConfirmationDecision, confirmationId: number, createdAt: string) => void }) {
+function ClaimView({ claim, runStale, onDecision }: { claim: AnalysisClaim; runStale: boolean; onDecision: (claimId: number, decision: ConfirmationDecision, confirmationId: number, createdAt: string) => void }) {
   const [pending, setPending] = useState<ConfirmationDecision | null>(null);
   const [error, setError] = useState("");
+  const [candidateState, setCandidateState] = useState<"idle" | "saving" | "created">("idle");
+  const [candidateError, setCandidateError] = useState("");
   async function decide(decision: ConfirmationDecision) {
     setPending(decision); setError("");
     try {
@@ -143,6 +145,11 @@ function ClaimView({ claim, onDecision }: { claim: AnalysisClaim; onDecision: (c
     } catch {
       setError("决定保存失败；当前 Claim、分析结果与既有决定均保留，请重试。");
     } finally { setPending(null); }
+  }
+  async function materializeCandidate() {
+    setCandidateState("saving"); setCandidateError("");
+    try { await createMemoryCandidate(claim.id); setCandidateState("created"); }
+    catch { setCandidateError("候选建立失败；Claim 与用户确认状态均已保留，请重试。"); setCandidateState("idle"); }
   }
   const provenanceLabel = claim.status === "PROPOSED"
     ? "模型生成、尚未确认"
@@ -155,6 +162,10 @@ function ClaimView({ claim, onDecision }: { claim: AnalysisClaim; onDecision: (c
     <h5>Evidence</h5>{claim.evidence_references.map((item) => <blockquote key={item.id}><strong>{item.role}</strong> · {item.source_type} / {item.field_path}<br />{item.excerpt || "无摘录"}</blockquote>)}
     <h5>Uncertainty</h5>{claim.uncertainties.map((item) => <p key={item.id}><strong>{item.kind}</strong>：{item.description}</p>)}
     {claim.status === "PROPOSED" ? <div className="claim-actions"><Button busy={pending === "CONFIRMED"} disabled={pending !== null} onClick={() => void decide("CONFIRMED")}>{pending === "CONFIRMED" ? "正在确认…" : "确认此 Claim"}</Button><Button variant="danger" busy={pending === "REJECTED"} disabled={pending !== null} onClick={() => void decide("REJECTED")}>{pending === "REJECTED" ? "正在拒绝…" : "拒绝此 Claim"}</Button></div> : <p className="decision-state">用户已{claim.status === "CONFIRMED" ? "确认" : "拒绝"}；这是用户决定，不会改写原始记录。</p>}
+    {claim.status === "CONFIRMED" && !runStale && candidateState !== "created" && <Button busy={candidateState === "saving"} onClick={() => void materializeCandidate()}>{candidateState === "saving" ? "正在建立候选…" : "建立长期记忆候选"}</Button>}
+    {claim.status === "CONFIRMED" && runStale && <StatusNotice tone="warning">分析输入已 stale，不能建立新的长期记忆候选。</StatusNotice>}
+    {candidateState === "created" && <StatusNotice tone="success" role="status">候选已建立，尚未纳入长期记忆。请到“我们”页面明确决定。</StatusNotice>}
+    {candidateError && <StatusNotice tone="danger" role="alert">{candidateError}</StatusNotice>}
     {error && <StatusNotice tone="danger" role="alert">{error}</StatusNotice>}
   </section>;
 }

@@ -24,18 +24,18 @@
 
 ## Slice 4：前端闭环
 
-- [ ] 人工 Baseline、长期记忆与量化 Baseline 分区展示。
-- [ ] 候选纳入、撤回、重纳入失败时页面状态保留。
-- [ ] 7/30/90/all、样本量、数据不足、stale、重算和来源下钻完整。
-- [ ] loading/empty/error/completed 使用 Design System primitive，且不只靠颜色。
-- [ ] 移动端、桌面、键盘和长来源列表通过人工验收。
+- [x] 人工 Baseline、长期记忆与量化 Baseline 分区展示。
+- [x] 候选纳入、撤回、重纳入失败时页面状态保留。
+- [x] 7/30/90/all、样本量、数据不足、stale、重算和来源下钻完整。
+- [x] loading/empty/error/completed 使用 Design System primitive，且不只靠颜色。
+- [x] 移动端、桌面、键盘和长来源列表通过人工验收。
 
 ## 完成门禁
 
 - [ ] Backend/Frontend 全量测试与 production build 通过。
 - [ ] fresh Alembic upgrade/downgrade/current/check 与 PostgreSQL 兼容审查通过。
 - [ ] 独立 AI Code Review、修复与再次完整回归通过。
-- [ ] 浏览器人工验收通过。
+- [x] 浏览器人工验收通过。
 - [ ] Phase 3 与比赛证据文档更新。
 - [ ] 密钥、依赖、数据库、缓存和构建产物检查通过。
 - [ ] 用户分别授权 commit 与 push。

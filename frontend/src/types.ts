@@ -235,3 +235,92 @@ export interface AnalysisRun {
   is_stale: boolean;
   claims: AnalysisClaim[];
 }
+
+export interface PetBaseline {
+  id: number;
+  pet_id: number;
+  social_behavior: Record<string, unknown> | null;
+  activity_pattern: Record<string, unknown> | null;
+  feeding_pattern: Record<string, unknown> | null;
+  resting_pattern: Record<string, unknown> | null;
+  handling_preference: Record<string, unknown> | null;
+  hiding_pattern: Record<string, unknown> | null;
+}
+
+export type MemoryCandidateState = "ELIGIBLE" | "ACTIVE" | "WITHDRAWN" | "STALE";
+export type MemoryDecisionType = "INCLUDE" | "WITHDRAW";
+
+export interface MemoryDecision {
+  id: number;
+  candidate_id: number;
+  request_id: string;
+  decision: MemoryDecisionType;
+  note: string | null;
+  created_at: string;
+}
+
+export interface MemoryCandidate {
+  id: number;
+  pet_id: number;
+  claim_id: number;
+  claim_snapshot: { claim_type: string; statement: string; confidence_label: ClaimConfidence };
+  evidence_snapshot: Array<Record<string, unknown>>;
+  uncertainty_snapshot: Array<Record<string, unknown>>;
+  model_snapshot: Record<string, unknown>;
+  source_episode_updated_at: string;
+  created_at: string;
+  is_stale: boolean;
+  state: MemoryCandidateState;
+  decisions: MemoryDecision[];
+}
+
+export type BaselineWindow = "7d" | "30d" | "90d" | "all";
+export type BaselineSnapshotStatus = "READY" | "INSUFFICIENT_DATA" | "EMPTY";
+
+export interface BaselineMetric {
+  key: string;
+  field: string;
+  behavior_type?: string;
+  episode_type?: string;
+  unit?: string | null;
+  count: number;
+  min?: number;
+  max?: number;
+  median?: number;
+  observation_days?: number;
+  status: string;
+  trend?: Record<string, unknown> | null;
+}
+
+export interface BaselineEvidence {
+  id: number;
+  snapshot_id: number;
+  episode_id: number | null;
+  observation_id: number | null;
+  source_type: "EPISODE" | "OBSERVATION";
+  window_segment: "CURRENT" | "COMPARISON";
+  metric_key: string;
+  field_path: string;
+  value_snapshot: unknown;
+  source_snapshot: Record<string, unknown>;
+  observed_at: string;
+  source_updated_at: string;
+  created_at: string;
+}
+
+export interface BaselineSnapshot {
+  id: number;
+  pet_id: number;
+  window: BaselineWindow;
+  window_start: string | null;
+  window_end: string;
+  as_of: string;
+  status: BaselineSnapshotStatus;
+  algorithm_version: string;
+  source_fingerprint: string;
+  sample_count: number;
+  metrics_json: BaselineMetric[];
+  created_at: string;
+  is_stale: boolean;
+  evidences: BaselineEvidence[];
+}

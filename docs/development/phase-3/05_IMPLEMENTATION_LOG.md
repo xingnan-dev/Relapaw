@@ -141,3 +141,32 @@ GET  /api/v1/baseline-snapshots/{snapshot_id}
 - 用户明确回复“Phase 3 Slice 3 人工验收通过”。
 - 验收覆盖字段级 lineage、编辑/新增/删除生命周期、未来记录排除及事务回滚。
 - 当前进入 Git commit 授权门禁；尚未 commit、尚未 push，Slice 4 尚未开始。
+
+## 2026-10-12 — Slice 4 前端闭环实现
+
+### 已实现
+
+- Episode 的已确认且非 stale Claim 可显式建立 `MemoryCandidate`；建立候选不会自动纳入长期记忆。
+- “我们”页面分开显示人工档案 Baseline、长期记忆候选和确定性量化 Baseline，避免来源语义混淆。
+- 候选支持 INCLUDE、WITHDRAW 和重新 INCLUDE；网络失败保留候选、当前状态与可重试入口，并复用 request_id。
+- stale 候选明确标注来源已变化，不允许新纳入；既有 ACTIVE stale 候选仍可撤回。
+- 量化 Baseline 支持 7d/30d/90d/all，显示状态、样本量、截止时间、算法版本、stale、重算及字段级来源。
+- EMPTY/INSUFFICIENT_DATA 不生成趋势；来源删除后仍显示冻结值并标注原记录已删除。
+- loading、empty、error、success、stale 均使用现有 Design System primitive 和文字标签，不只依赖颜色。
+
+### 边界保持
+
+- 前端只调用既有 Phase 3 API；无数据库结构变化，因此没有新增或修改 migration。
+- 未修改 Observation、OwnerInterpretation、人工 PetBaseline、SafetyCheck、VeterinaryEscalation、Episode 原文或 AnalysisRun 输出。
+- 未调用 Provider，未接入 RAG、Agent、多模态、诊断或自动长期记忆写入。
+- 完整品牌视觉精修仍固定在 Evaluation 之后，本 Slice 只完成信息架构、状态与可用性闭环。
+
+## 2026-10-12 — Slice 4 浏览器人工验收
+
+- 用户使用真实 Qwen 完成新的 `AnalysisRun #9`，状态为 COMPLETED；此前 Provider 网络失败保留为 FAILED 审计记录且没有部分 Claim。
+- 用户确认新 Claim 后，页面出现“建立长期记忆候选”；候选建立后明确显示“尚未纳入长期记忆”。
+- “我们”页面验证候选 ELIGIBLE、明确 INCLUDE 后 ACTIVE、WITHDRAW 后 WITHDRAWN，以及重新纳入入口。
+- 7d 与 all 窗口成功生成 `quantitative-baseline/v1` 快照；页面同时展示 READY 总状态、指标级 INSUFFICIENT_DATA 和“无趋势结论”。
+- 来源下钻展示 CURRENT、EPISODE、字段名、冻结值和发生时间；长列表滚动时底部导航未遮挡内容。
+- 用户完成 30d/90d、重新纳入、窄窗口和键盘焦点检查后，明确回复“Phase 3 Slice 4 人工验收通过”。
+- 当前进入 commit 授权门禁；尚未 commit、尚未 push。

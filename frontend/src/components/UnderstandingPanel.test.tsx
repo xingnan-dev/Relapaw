@@ -132,4 +132,28 @@ describe("text Understanding panel", () => {
     expect(screen.getByRole("button", { name: "开始文本分析" })).toBeDisabled();
     expect(screen.getByText(/Safety blocked/)).toBeInTheDocument();
   });
+
+  it("materializes a confirmed claim as a candidate without auto-including it", async () => {
+    const confirmed = { ...completedRun, claims: [{ ...completedRun.claims[0], status: "CONFIRMED" as const }] };
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/memory-candidate") && init?.method === "POST") return json({ id: 4 }, true, 201);
+      return json([confirmed]);
+    }));
+    render(<UnderstandingPanel episode={episode} />);
+    const run = await screen.findByLabelText("AnalysisRun 61");
+    fireEvent.click(within(run).getByRole("button", { name: "建立长期记忆候选" }));
+    expect(await within(run).findByText(/候选已建立，尚未纳入长期记忆/)).toBeInTheDocument();
+  });
+
+  it("preserves a confirmed claim when candidate creation fails", async () => {
+    const confirmed = { ...completedRun, claims: [{ ...completedRun.claims[0], status: "CONFIRMED" as const }] };
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input).endsWith("/memory-candidate") && init?.method === "POST" ? Promise.reject(new TypeError("offline")) : json([confirmed])));
+    render(<UnderstandingPanel episode={episode} />);
+    const run = await screen.findByLabelText("AnalysisRun 61");
+    fireEvent.click(within(run).getByRole("button", { name: "建立长期记忆候选" }));
+    expect(await within(run).findByRole("alert")).toHaveTextContent("Claim 与用户确认状态均已保留");
+    expect(within(run).getByText("一种可能解释与当时环境有关。")).toBeInTheDocument();
+    expect(within(run).getByRole("button", { name: "建立长期记忆候选" })).toBeInTheDocument();
+  });
 });

@@ -9,6 +9,9 @@
 | `da08fbc` | Phase 2 文本 Understanding 前后端闭环 | migration 0005、AnalysisRun/Claim、FakeAdapter、UI 状态和确认/拒绝 | Phase 2 `01`–`06` | 已完成并推送 |
 | `f0229ee` | 真实 Provider 接入 | OpenAI/Qwen Adapter、错误映射、mock 测试、v3 Prompt | Phase 2 Provider 记录 | 已完成并推送 |
 | `965d8dd` | Phase 2 Review 与关闭 | Review 回归补强、Acceptance、路线修正 | Phase 2 `07`–`09` | 已完成并推送 |
+| `05e46a1` | Phase 3 长期记忆候选生命周期 | MemoryCandidate、追加式决定、stale 与回滚 | Phase 3 Slice 1 记录与测试 | 已完成并推送 |
+| `1841365` | Phase 3 确定性量化 Baseline | 7/30/90/all、样本门槛、趋势与快照 | Phase 3 Slice 2 记录与测试 | 已完成并推送 |
+| `7ea8fc8` | Phase 3 Baseline Evidence lineage | 字段级来源、编辑删除生命周期、原子回滚 | Phase 3 Slice 3 记录与测试 | 已完成并推送 |
 
 ## 需求到证据的查找方式
 
@@ -22,6 +25,8 @@
 | 真实模型可工作 | Qwen Chat smoke test与浏览器 AnalysisRun #3 |
 | AI 建议经过 Review 与修复 | Phase 0.1/2 AI Review 和 Fix/Regression 文档 |
 | 密钥未进入仓库 | `.gitignore`、`.env.example`、Phase 2 污染检查 |
+| 长期记忆由用户控制 | MemoryCandidate/MemoryDecision API、Slice 1 测试、Slice 4 前端决定入口 |
+| Baseline 不伪造趋势 | `quantitative-baseline/v1`、样本不足测试、字段级来源下钻 |
 
 ## 后续 commit 规则
 

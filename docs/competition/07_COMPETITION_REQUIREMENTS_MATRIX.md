@@ -25,7 +25,7 @@
 
 轻量 Design System 已于 2026-10-11 完成自动回归和浏览器可用性验收；完整 UI/UX 与品牌精修仍按总指引安排在 Phase 3 和 Evaluation 之后。
 
-Phase 3 已建立 Requirements、Architecture、Scope、Acceptance 和固定实施切片；Slice 1–2 已关闭，Slice 3 后端 lineage/lifecycle、migration、自动测试与人工验收已经完成并等待 Git 门禁。Slice 4 不得在比赛材料中描述为已完成。
+Phase 3 已建立 Requirements、Architecture、Scope、Acceptance 和固定实施切片；Slice 1–3 已实现、人工验收并推送。Slice 4 的前端闭环、自动回归和浏览器人工验收已完成，目前只剩 commit/push Git 门禁，因此在完成门禁前仍不得把整个 Phase 3 描述为已关闭。
 
 ## 最终提交前门禁
 

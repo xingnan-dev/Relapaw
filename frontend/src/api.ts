@@ -1,4 +1,4 @@
-import type { AnalysisRun, CompleteEpisodeCreate, ConfirmationDecision, Episode, EpisodeUpdate, FollowUp, FollowUpComplete, ObservationPlan, ObservationPlanStatus, Pet, PetCreate, TimelineFilters, TimelinePage, UserConfirmation, VeterinaryEscalation, VeterinaryEscalationStatus } from "./types";
+import type { AnalysisRun, BaselineSnapshot, BaselineWindow, CompleteEpisodeCreate, ConfirmationDecision, Episode, EpisodeUpdate, FollowUp, FollowUpComplete, MemoryCandidate, MemoryDecisionType, ObservationPlan, ObservationPlanStatus, Pet, PetBaseline, PetCreate, TimelineFilters, TimelinePage, UserConfirmation, VeterinaryEscalation, VeterinaryEscalationStatus } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -102,5 +102,37 @@ export function decideClaim(claimId: number, decision: ConfirmationDecision): Pr
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ decision }),
+  });
+}
+
+export function createMemoryCandidate(claimId: number): Promise<MemoryCandidate> {
+  return request(`/api/v1/claims/${claimId}/memory-candidate`, { method: "POST" });
+}
+
+export function getPetBaseline(petId: number): Promise<PetBaseline> {
+  return request(`/api/v1/pets/${petId}/baseline`);
+}
+
+export function listMemoryCandidates(petId: number): Promise<MemoryCandidate[]> {
+  return request(`/api/v1/pets/${petId}/memory-candidates`);
+}
+
+export function decideMemoryCandidate(candidateId: number, requestId: string, decision: MemoryDecisionType): Promise<MemoryCandidate> {
+  return request(`/api/v1/memory-candidates/${candidateId}/decisions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ request_id: requestId, decision }),
+  });
+}
+
+export function getLatestBaselineSnapshot(petId: number, window: BaselineWindow): Promise<BaselineSnapshot> {
+  return request(`/api/v1/pets/${petId}/baseline-snapshots/latest?window=${window}`);
+}
+
+export function recomputeBaselineSnapshot(petId: number, window: BaselineWindow, asOf: string): Promise<BaselineSnapshot> {
+  return request(`/api/v1/pets/${petId}/baseline-snapshots/recompute`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ window, as_of: asOf }),
   });
 }
