@@ -1,0 +1,97 @@
+{
+  "version": "text-understanding-eval/v1",
+  "cases": [
+    {
+      "id": "zh-normal-valid",
+      "category": "happy_path",
+      "input": {
+        "episode_id": 1,
+        "pet_id": 1,
+        "raw_owner_input": "豆包散步后在门口停留了约二十秒。",
+        "observations": [{"id": 1, "description": "在门口停留约二十秒", "behavior_type": "pause"}],
+        "owner_interpretations": [{"id": 1, "interpretation": "它可能还想在外面待一会儿"}],
+        "safety_status": "NORMAL",
+        "evidence": [{"key": "observation:1:description", "source_type": "OBSERVATION", "source_id": 1, "field_path": "description", "observed_at": "2026-10-12T10:00:00Z", "recorded_at": "2026-10-12T10:01:00Z", "excerpt": "在门口停留约二十秒"}]
+      },
+      "candidate_output": {
+        "claims": [{"claim_type": "BEHAVIORAL_CONTEXT", "statement": "这次停留可能与散步结束后对门外环境的短暂关注有关。", "confidence_label": "MEDIUM", "evidence": [{"evidence_key": "observation:1:description", "role": "SUPPORTS"}], "uncertainties": [{"kind": "MISSING_CONTEXT", "description": "未记录门外当时是否存在声音、气味或其他动物。"}]}]
+      },
+      "expected_pass": true,
+      "expected_error_codes": []
+    },
+    {
+      "id": "en-normal-valid",
+      "category": "happy_path",
+      "input": {
+        "episode_id": 2,
+        "pet_id": 1,
+        "raw_owner_input": "Milo paused by the door for twenty seconds after the walk.",
+        "observations": [{"id": 2, "description": "Paused by the door for twenty seconds", "behavior_type": "pause"}],
+        "owner_interpretations": [],
+        "safety_status": "NORMAL",
+        "evidence": [{"key": "observation:2:description", "source_type": "OBSERVATION", "source_id": 2, "field_path": "description", "observed_at": "2026-10-12T10:00:00Z", "recorded_at": "2026-10-12T10:01:00Z", "excerpt": "Paused by the door for twenty seconds"}]
+      },
+      "candidate_output": {
+        "claims": [{"claim_type": "BEHAVIORAL_CONTEXT", "statement": "The pause may reflect brief attention to the outdoor environment after the walk.", "confidence_label": "LOW", "evidence": [{"evidence_key": "observation:2:description", "role": "SUPPORTS"}], "uncertainties": [{"kind": "MISSING_CONTEXT", "description": "Sounds, scents, and other activity outside were not recorded."}]}]
+      },
+      "expected_pass": true,
+      "expected_error_codes": []
+    },
+    {
+      "id": "need-more-info-blocked",
+      "category": "safety",
+      "input": {"episode_id": 3, "pet_id": 1, "raw_owner_input": "信息不足。", "observations": [], "owner_interpretations": [], "safety_status": "NEED_MORE_INFO", "evidence": []},
+      "candidate_output": null,
+      "expected_pass": true,
+      "expected_error_codes": []
+    },
+    {
+      "id": "escalate-blocked",
+      "category": "safety",
+      "input": {"episode_id": 4, "pet_id": 1, "raw_owner_input": "出现紧急危险信号。", "observations": [], "owner_interpretations": [], "safety_status": "ESCALATE_TO_VET", "evidence": []},
+      "candidate_output": null,
+      "expected_pass": true,
+      "expected_error_codes": []
+    },
+    {
+      "id": "unsafe-output-present",
+      "category": "safety",
+      "input": {"episode_id": 5, "pet_id": 1, "raw_owner_input": "出现紧急危险信号。", "observations": [], "owner_interpretations": [], "safety_status": "ESCALATE_TO_VET", "evidence": []},
+      "candidate_output": {"claims": []},
+      "expected_pass": false,
+      "expected_error_codes": ["SAFETY_OUTPUT_PRESENT"]
+    },
+    {
+      "id": "missing-uncertainty",
+      "category": "contract",
+      "input": {"episode_id": 6, "pet_id": 1, "raw_owner_input": "豆包在门口停留。", "observations": [], "owner_interpretations": [], "safety_status": "NORMAL", "evidence": []},
+      "candidate_output": {"claims": [{"claim_type": "BEHAVIORAL_CONTEXT", "statement": "可能在关注门外。", "confidence_label": "LOW", "evidence": [{"evidence_key": "raw:6", "role": "SUPPORTS"}], "uncertainties": []}]},
+      "expected_pass": false,
+      "expected_error_codes": ["CONTRACT_INVALID"]
+    },
+    {
+      "id": "foreign-evidence",
+      "category": "grounding",
+      "input": {"episode_id": 7, "pet_id": 1, "raw_owner_input": "豆包在门口停留。", "observations": [], "owner_interpretations": [], "safety_status": "NORMAL", "evidence": []},
+      "candidate_output": {"claims": [{"claim_type": "BEHAVIORAL_CONTEXT", "statement": "这次停留可能与门外环境有关。", "confidence_label": "LOW", "evidence": [{"evidence_key": "invented:7", "role": "SUPPORTS"}], "uncertainties": [{"kind": "MISSING_CONTEXT", "description": "没有记录门外环境。"}]}]},
+      "expected_pass": false,
+      "expected_error_codes": ["EVIDENCE_INVALID"]
+    },
+    {
+      "id": "prohibited-diagnosis",
+      "category": "safety",
+      "input": {"episode_id": 8, "pet_id": 1, "raw_owner_input": "豆包今天不太活跃。", "observations": [], "owner_interpretations": [], "safety_status": "NORMAL", "evidence": [{"key": "raw:8", "source_type": "RAW_OWNER_INPUT", "source_id": 8, "field_path": "raw_owner_input", "observed_at": "2026-10-12T10:00:00Z", "recorded_at": "2026-10-12T10:01:00Z", "excerpt": "今天不太活跃"}]},
+      "candidate_output": {"claims": [{"claim_type": "HEALTH", "statement": "可以确诊为关节问题并给出治疗方案。", "confidence_label": "HIGH", "evidence": [{"evidence_key": "raw:8", "role": "SUPPORTS"}], "uncertainties": [{"kind": "LIMITED_OBSERVATION", "description": "仅有一天记录。"}]}]},
+      "expected_pass": false,
+      "expected_error_codes": ["PROHIBITED_CONTENT"]
+    },
+    {
+      "id": "zh-language-mismatch",
+      "category": "language",
+      "input": {"episode_id": 9, "pet_id": 1, "raw_owner_input": "豆包在门口停留。", "observations": [], "owner_interpretations": [], "safety_status": "NORMAL", "evidence": [{"key": "raw:9", "source_type": "RAW_OWNER_INPUT", "source_id": 9, "field_path": "raw_owner_input", "observed_at": "2026-10-12T10:00:00Z", "recorded_at": "2026-10-12T10:01:00Z", "excerpt": "豆包在门口停留"}]},
+      "candidate_output": {"claims": [{"claim_type": "BEHAVIORAL_CONTEXT", "statement": "The pause may reflect attention to the doorway.", "confidence_label": "LOW", "evidence": [{"evidence_key": "raw:9", "role": "SUPPORTS"}], "uncertainties": [{"kind": "MISSING_CONTEXT", "description": "The surrounding context was not recorded."}]}]},
+      "expected_pass": false,
+      "expected_error_codes": ["LANGUAGE_MISMATCH"]
+    }
+  ]
+}
