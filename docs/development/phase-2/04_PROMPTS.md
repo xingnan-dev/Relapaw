@@ -31,3 +31,19 @@
 - 面向用户的 Claim 与 Uncertainty 跟随 Raw Input 的自然语言；枚举值与契约字段保持稳定。
 - 未记录的环境或背景只能作为明确的缺失信息或不确定性，不得作为支持证据或已经成立的原因。
 - OpenAI Responses 与 Qwen Chat Completions 共用此 Prompt 契约及相同的 Pydantic 输出校验。
+
+## 2026-10-12 — Evidence Boundary Prompt Contract v4
+
+`text-understanding/v4-evidence-boundary` 来自 Evaluation Slice 3 的真实输出复核，并进一步要求：
+
+- Owner Interpretation 只能作为 `CONTEXT` 或 `LIMITS`，不能作为 `SUPPORTS`。
+- 不得从行为单独推断未记录的感官刺激、意图、情绪、决定、安全判断或“警戒循环”等内部状态。
+- 未记录的替代解释只能进入 Uncertainty，不能写成 Claim 的可能原因。
+
+## 2026-10-12 — Grounded Claims Prompt Contract v5
+
+`text-understanding/v5-grounded-claims` 来自第二轮真实评估复核，并新增：
+
+- 每次请求在用户消息中显式指定所有 Claim 与 Uncertainty 的自然语言。
+- 不得把“主人解释是否与观察吻合”作为 Claim 主体。
+- 无法仅凭已记录 Evidence 形成有用解释时返回空 `claims`，不得为填充输出而猜测未记录原因或内部状态。

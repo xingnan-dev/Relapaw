@@ -38,3 +38,26 @@ Slice 1 命令只读取仓库内 JSON 并进行本地校验，不实例化 Adapt
 ```powershell
 .\.venv\Scripts\python.exe -m app.evaluation.recorded_outputs evals\recorded_outputs_v1.json
 ```
+
+## Slice 3：最小真实 Provider 协议
+
+冻结预算：
+
+- 去标识化中英文样本各 1 个，共 2 个请求。
+- 每个请求最多 800 输出 token，超时上限 30 秒。
+- `max_retries: 0`，失败不重试。
+- 不创建 Pet、Episode、AnalysisRun，不写产品数据库。
+- 输出只写 stdout，包含版本、延迟、硬门禁错误和供人工 Review 的录制输出；不包含 API Key。
+- 真实运行需要同时提供 `--execute` 与临时环境授权 `RELAPAW_LIVE_EVAL_AUTHORIZED=YES`。
+
+默认预检（零请求）：
+
+```powershell
+.\.venv\Scripts\python.exe -m app.evaluation.live_provider evals\live_provider_v1.json
+```
+
+真实执行命令只能在用户对本次调用明确授权后使用，不纳入普通测试或 CI。
+
+首轮人工 Review 后，Prompt 契约升级为 `text-understanding/v4-evidence-boundary`：Owner Interpretation 只能作为 `CONTEXT` 或 `LIMITS`，不得作为 `SUPPORTS`；未记录的刺激、意图、情绪、决定、安全判断或内部状态只能进入 Uncertainty，不得写成 Claim 原因。
+
+第二轮人工 Review 后，Prompt 契约升级为 `text-understanding/v5-grounded-claims`：每次请求显式指定中文或英文；不得评价 Owner Interpretation 是否与 Observation 吻合；无法在已记录 Evidence 内形成有用解释时返回空 `claims`，不得依赖未记录原因或内部状态进行猜测。

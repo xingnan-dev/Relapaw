@@ -24,3 +24,40 @@
 - 报告按完整 Adapter/模型/Prompt/输入/输出契约版本分组，避免混合不可比结果。
 - 运行器固定报告 `recorded_only: true` 和 `network_calls: 0`；未读取密钥、未连接 Provider、未写产品数据库。
 - 下一步固定为人工验收门禁；未验收、commit 和 push 前不进入 Slice 3。
+
+## 2026-10-12 — Slice 3 调用前准备
+
+- 冻结 2 个去标识化、非医疗、`NORMAL` Safety 样本，中英文各 1 个。
+- 冻结单次执行预算：2 请求、每例最多 800 输出 token、30 秒超时、零重试、零产品数据库写入。
+- live runner 默认 dry-run；真实执行需要 CLI `--execute` 与临时环境授权同时存在。
+- Adapter 与 Settings 仅在通过执行授权后延迟加载；dry-run 不建立 Provider 客户端。
+- FakeAdapter 专项测试覆盖默认零请求、缺少授权拒绝、成功硬门禁和 Provider 失败无重试。
+- 当前没有执行真实请求；下一门禁是用户确认预算并单独授权本次真实调用。
+
+## 2026-10-12 — Slice 3 首轮真实评估与修复
+
+- 用户单独授权后执行 2/2 请求，Qwen `qwen3.8-flash`，每例上限 800 输出 token、30 秒超时、零重试、零数据库写入。
+- 两例均通过 Schema、Evidence key、禁用内容和语言硬门禁；延迟约 7.25 秒与 7.70 秒。
+- 人工 Review 未通过：中文第二条 Claim 将 Owner Interpretation 标为 `SUPPORTS`；英文输出把未记录刺激写为可能触发原因，并推断“判断安全”“完成警戒循环”。
+- 首次 Windows stdout 出现中文乱码，影响人工复核，不能视为可接受报告。
+- 修复：Prompt 升级为 `v4-evidence-boundary`；新增 `INTERPRETATION_SUPPORT_INVALID` 硬门禁；明确禁止从行为推断未记录刺激和内部状态；CLI 强制 UTF-8 stdout。
+- 首轮授权已耗尽，修复后未再次调用 Provider。第二轮必须重新取得相同或更严格预算授权。
+
+## 2026-10-12 — Slice 3 第二轮真实评估与 v5 修复
+
+- 用户重新授权后执行 2/2 请求，仍为 800 输出 token、30 秒超时、零重试、零数据库写入。
+- v4 成功修复 Owner Interpretation Evidence 角色：第二轮使用 `CONTEXT`，不再使用 `SUPPORTS`。
+- 中文样本返回英文，被确定性门禁标记为 `LANGUAGE_MISMATCH`。
+- 中文第二条仍把“主人假设与观察是否吻合”作为 Claim 主体；英文样本仍把“未记录环境刺激或内部状态”写成可能触发原因，人工 Review 未通过。
+- UTF-8 stdout 修复有效，第二轮中文输入对应输出可正常审阅。
+- 修复：Prompt 升级为 `v5-grounded-claims`；用户消息显式声明输出语言；禁止评价 Owner Interpretation 是否吻合；无法基于记录 Evidence 解释时要求返回空 Claim。
+- 第二轮授权已耗尽，v5 尚未进行真实 Provider 验证。
+
+## 2026-10-12 — Slice 3 第三轮真实评估与资格结论
+
+- 用户第三次单独授权后执行 v5 的 2/2 请求，仍为 800 输出 token、30 秒超时、零重试、零数据库写入。
+- 两例均通过契约、Evidence key、Interpretation 角色、禁用内容和语言硬门禁。
+- 中文输出已跟随语言，但 Claim 主要复述 Observation，并出现“进门后停顿再进入室内”的时间顺序偏移；`HIGH` 也不符合待确认解释的谨慎程度。
+- 英文输出继续将未记录的声音或移动写为可能触发原因，违反 Grounded Claim 边界。
+- 人工 Review 判定 Qwen `qwen3.8-flash` + `text-understanding/v5-grounded-claims` 为 `NOT_QUALIFIED`。
+- 停止继续付费 Prompt 试错。该结论不删除失败证据，也不包装为模型质量通过；如需更换模型或重构契约，进入独立后续 Slice。

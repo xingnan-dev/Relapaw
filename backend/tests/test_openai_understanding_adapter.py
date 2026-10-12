@@ -113,7 +113,8 @@ def test_responses_parse_uses_structured_output_and_no_tools_or_storage():
     assert "observation or behavior itself" in call["instructions"]
     assert "Match the natural language" in call["instructions"]
     assert "never as supporting evidence" in call["instructions"]
-    assert provider.descriptor.prompt_contract_version == "text-understanding/v3-provider-neutral"
+    assert "Required language for every human-readable claim and uncertainty: English (en)." in call["input"]
+    assert provider.descriptor.prompt_contract_version == "text-understanding/v5-grounded-claims"
     assert provider.descriptor.model_version == "resolved-model-2026-10-01"
 
 
@@ -260,7 +261,32 @@ def test_qwen_chat_parse_uses_json_schema_contract_and_disables_thinking():
     assert "max_tokens" not in call
     assert "max_completion_tokens" not in call
     assert "test-key-never-sent" not in call["messages"][1]["content"]
+    assert "Required language for every human-readable claim and uncertainty: English (en)." in call["messages"][1]["content"]
     assert provider.descriptor.model_version == "qwen3.8-flash-2026-09-01"
+
+
+def test_qwen_chat_explicitly_requires_chinese_for_chinese_owner_input():
+    payload = understanding_input().model_copy(update={"raw_owner_input": "小狗在门口停留。"})
+    result = SimpleNamespace(
+        model="qwen3.8-flash",
+        choices=[SimpleNamespace(
+            finish_reason="stop",
+            message=SimpleNamespace(parsed=valid_output(), refusal=None),
+        )],
+    )
+    client, endpoint = fake_chat_client(result=result)
+    provider = QwenChatCompletionsAdapter(
+        api_key="test-key",
+        model="qwen3.8-flash",
+        timeout_seconds=30,
+        max_output_tokens=800,
+        model_provider="qwen",
+        client=client,
+    )
+
+    provider.analyze(payload)
+
+    assert "Required language for every human-readable claim and uncertainty: Chinese (zh)." in endpoint.calls[0]["messages"][1]["content"]
 
 
 @pytest.mark.parametrize(("finish_reason", "refusal", "parsed", "expected_code"), [

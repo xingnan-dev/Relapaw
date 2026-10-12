@@ -1,0 +1,39 @@
+{
+  "version": "live-provider-eval/v1",
+  "budget": {
+    "max_requests": 2,
+    "max_output_tokens_per_request": 800,
+    "timeout_seconds": 30,
+    "max_retries": 0,
+    "persist_to_product_database": false
+  },
+  "cases": [
+    {
+      "id": "live-zh-behavior-context",
+      "input": {
+        "episode_id": 900001,
+        "pet_id": 900001,
+        "raw_owner_input": "小狗散步回家后在门口朝外站了约二十秒，随后自行进屋。",
+        "observations": [{"id": 900001, "description": "在门口朝外站立约二十秒，随后自行进屋", "behavior_type": "pause"}],
+        "owner_interpretations": [{"id": 900001, "interpretation": "我觉得它可能还想在外面待一会儿"}],
+        "safety_status": "NORMAL",
+        "evidence": [
+          {"key": "observation:900001:description", "source_type": "OBSERVATION", "source_id": 900001, "field_path": "description", "observed_at": "2026-10-12T10:00:00Z", "recorded_at": "2026-10-12T10:01:00Z", "excerpt": "在门口朝外站立约二十秒，随后自行进屋"},
+          {"key": "interpretation:900001:interpretation", "source_type": "OWNER_INTERPRETATION", "source_id": 900001, "field_path": "interpretation", "observed_at": "2026-10-12T10:00:00Z", "recorded_at": "2026-10-12T10:01:00Z", "excerpt": "可能还想在外面待一会儿"}
+        ]
+      }
+    },
+    {
+      "id": "live-en-limited-context",
+      "input": {
+        "episode_id": 900002,
+        "pet_id": 900001,
+        "raw_owner_input": "After dinner, the dog looked toward the hallway twice and then settled on the mat.",
+        "observations": [{"id": 900002, "description": "Looked toward the hallway twice, then settled on the mat", "behavior_type": "attention_shift"}],
+        "owner_interpretations": [],
+        "safety_status": "NORMAL",
+        "evidence": [{"key": "observation:900002:description", "source_type": "OBSERVATION", "source_id": 900002, "field_path": "description", "observed_at": "2026-10-12T11:00:00Z", "recorded_at": "2026-10-12T11:01:00Z", "excerpt": "Looked toward the hallway twice, then settled on the mat"}]
+      }
+    }
+  ]
+}

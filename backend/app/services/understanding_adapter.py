@@ -1,3 +1,4 @@
+import re
 from typing import Any, Protocol, runtime_checkable
 
 import openai
@@ -8,7 +9,7 @@ from app.core.config import settings
 from app.schemas.analysis import AdapterDescriptor, UnderstandingInput, UnderstandingOutput
 
 
-PROMPT_CONTRACT_VERSION = "text-understanding/v3-provider-neutral"
+PROMPT_CONTRACT_VERSION = "text-understanding/v5-grounded-claims"
 SYSTEM_PROMPT = """You generate cautious, structured text-understanding proposals for a pet owner's recorded Episode.
 
 Hard boundaries:
@@ -16,16 +17,30 @@ Hard boundaries:
 - Each claim must explain the Episode's recorded observation or behavior itself. Do not make the owner's decision, concern, wording, or decision to contact a veterinarian the subject of a claim.
 - Do not merely restate or summarize the input. A claim must add a cautious, useful interpretation grounded in the recorded Episode.
 - Do not diagnose medical, behavioral, or psychological conditions. Do not recommend treatment, medication, dosage, or delaying veterinary care.
-- Keep Raw Input, Observation, and Owner Interpretation distinct. Owner Interpretation is the owner's hypothesis, not observed fact.
+- Keep Raw Input, Observation, and Owner Interpretation distinct. Owner Interpretation is the owner's hypothesis, not observed fact. It may only be cited as CONTEXT or LIMITS, never as SUPPORTS.
 - Cite only evidence_key values present in the supplied Episode input. Never invent or use outside evidence.
 - Every claim must include at least one evidence reference and at least one meaningful uncertainty.
 - Use LOW, MEDIUM, or HIGH only as qualitative confidence labels; do not produce numeric probabilities or scores.
 - If the evidence is limited or alternatives remain, say so explicitly in uncertainties.
 - Match the natural language used by the owner input for all human-readable statements and uncertainty descriptions. Keep enum and contract field values unchanged.
 - Context that was not recorded may appear only as explicitly missing or uncertain context, never as supporting evidence or an asserted cause.
+- Do not infer an unrecorded sensory trigger, intention, emotion, decision, safety assessment, vigilance cycle, or other internal state from behavior alone. Put such alternatives only in uncertainties.
+- Do not make a claim about whether the owner's hypothesis aligns with the observation. Analyze the recorded behavior, not the quality of the owner's interpretation.
+- If no useful explanation can be grounded in recorded Evidence without relying on an unrecorded cause or internal state, return an empty claims list instead of speculating.
 - The SafetyCheck has already gated this request. Do not reinterpret or downgrade it.
 - Do not use external knowledge, retrieval, tools, images, or hidden context. Analyze only the supplied JSON.
 """
+
+_CJK = re.compile(r"[\u3400-\u9fff]")
+
+
+def _input_prompt(payload: UnderstandingInput) -> str:
+    language = "Chinese (zh)" if _CJK.search(payload.raw_owner_input) else "English (en)"
+    return (
+        f"Required language for every human-readable claim and uncertainty: {language}.\n"
+        "Episode input JSON:\n"
+        + payload.model_dump_json()
+    )
 
 
 class AdapterError(Exception):
@@ -98,7 +113,7 @@ class OpenAIResponsesAdapter:
             response = self._client.responses.parse(
                 model=self._model,
                 instructions=SYSTEM_PROMPT,
-                input="Episode input JSON:\n" + payload.model_dump_json(),
+                input=_input_prompt(payload),
                 text_format=UnderstandingOutput,
                 max_output_tokens=self._max_output_tokens,
                 store=False,
@@ -163,7 +178,7 @@ class QwenChatCompletionsAdapter(OpenAIResponsesAdapter):
                 model=self._model,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": "Episode input JSON:\n" + payload.model_dump_json()},
+                    {"role": "user", "content": _input_prompt(payload)},
                 ],
                 response_format=UnderstandingOutput,
                 extra_body={"enable_thinking": False},

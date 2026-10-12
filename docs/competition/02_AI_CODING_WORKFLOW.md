@@ -38,7 +38,7 @@ Relapaw 不把 AI Coding 限定为“让模型写代码”，而是将其纳入�
 
 - 每个 Phase 保留经过整理、可公开的关键 Prompt，不保存 API key、私人目录噪声或无关聊天。
 - Prompt 同时写明“要做什么”和“不得做什么”，例如不得诊断、不得绕过 Safety、不得擅自 commit/push。
-- 运行时 Prompt 有独立版本；Phase 2 当前为 `text-understanding/v3-provider-neutral`。
+- 运行时 Prompt 有独立版本；两轮 Evaluation 真实输出复核后当前为 `text-understanding/v5-grounded-claims`。
 - Prompt 版本、输入契约和输出契约随 AnalysisRun 保存，便于回放与比较。
 
 ## 失败不是隐藏步骤

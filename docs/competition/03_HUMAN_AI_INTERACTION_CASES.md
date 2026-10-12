@@ -36,6 +36,12 @@
 
 **AI 改进**：Prompt 升级为 `text-understanding/v3-provider-neutral`，要求聚焦 Episode 行为、避免复述、跟随输入语言，并把未记录背景限制为 Uncertainty 而非 Evidence。
 
+**后续真实评估**：首轮最小 Provider 评估又发现 Owner Interpretation 被作为支持事实，以及未记录刺激和内部状态被写入 Claim。人工拒绝该结果后，Prompt 升级为 `text-understanding/v4-evidence-boundary`，并新增 Interpretation Evidence 硬门禁。这一失败—复核—修复链路保留为 AI 原生开发证据。
+
+**第二轮复核**：v4 修正了 Interpretation 的 Evidence 角色和报告编码，但模型仍未跟随中文，并继续猜测未记录原因。人工再次拒绝，Prompt 升级为 `text-understanding/v5-grounded-claims`，加入显式语言指令与“证据不足则返回空 Claim”规则。
+
+**资格结论**：第三轮 v5 通过全部确定性硬门禁，但人工仍发现中文时间顺序偏移和英文无依据原因。团队没有把结构化输出成功包装成模型质量成功，而是将该组合标记为 `NOT_QUALIFIED` 并停止无上限付费试错。这展示了 AI 输出、自动评估和人工最终决定之间的清晰权责边界。
+
 **边界**：未擅自发起第二次付费请求；v3 先通过自动契约测试，语义质量保留为后续 Evaluation 抽样项。
 
 **证据**：Phase 2 Prompt 与 Acceptance 文档。

@@ -19,6 +19,7 @@ ERROR_CONTRACT_INVALID = "CONTRACT_INVALID"
 ERROR_EVIDENCE_INVALID = "EVIDENCE_INVALID"
 ERROR_PROHIBITED_CONTENT = "PROHIBITED_CONTENT"
 ERROR_LANGUAGE_MISMATCH = "LANGUAGE_MISMATCH"
+ERROR_INTERPRETATION_SUPPORT_INVALID = "INTERPRETATION_SUPPORT_INVALID"
 
 _CJK = re.compile(r"[\u3400-\u9fff]")
 _PROHIBITED = re.compile(
@@ -64,6 +65,7 @@ def evaluate_case(case: dict[str, Any]) -> CaseResult:
 
     errors: set[str] = set()
     allowed_evidence = {item.key for item in input_data.evidence}
+    evidence_source_by_key = {item.key: item.source_type for item in input_data.evidence}
     referenced_evidence = {
         reference.evidence_key
         for claim in output.claims
@@ -71,6 +73,13 @@ def evaluate_case(case: dict[str, Any]) -> CaseResult:
     }
     if not referenced_evidence.issubset(allowed_evidence):
         errors.add(ERROR_EVIDENCE_INVALID)
+    if any(
+        reference.role.value == "SUPPORTS"
+        and evidence_source_by_key.get(reference.evidence_key) == "OWNER_INTERPRETATION"
+        for claim in output.claims
+        for reference in claim.evidence
+    ):
+        errors.add(ERROR_INTERPRETATION_SUPPORT_INVALID)
 
     generated_text = " ".join(
         [claim.statement for claim in output.claims]
