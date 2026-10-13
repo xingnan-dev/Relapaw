@@ -12,6 +12,10 @@
 | `05e46a1` | Phase 3 长期记忆候选生命周期 | MemoryCandidate、追加式决定、stale 与回滚 | Phase 3 Slice 1 记录与测试 | 已完成并推送 |
 | `1841365` | Phase 3 确定性量化 Baseline | 7/30/90/all、样本门槛、趋势与快照 | Phase 3 Slice 2 记录与测试 | 已完成并推送 |
 | `7ea8fc8` | Phase 3 Baseline Evidence lineage | 字段级来源、编辑删除生命周期、原子回滚 | Phase 3 Slice 3 记录与测试 | 已完成并推送 |
+| `5b9d408` | Phase 3 前端记忆与 Baseline 闭环 | 候选纳入/撤回、窗口快照、来源下钻 | Phase 3 Slice 4 人工截图与测试 | 已完成并推送 |
+| `1d1e257` | Evaluation 离线安全基线 | 版本化数据集、确定性规则、机器报告 | Evaluation Slice 1 | 已完成并推送 |
+| `ec1bbc2` | recorded-output 与 Provider 错误评估 | 11 个错误码、人工语义标注、版本分组 | Evaluation Slice 2 | 已完成并推送 |
+| `e89f9eb` | 限额真实 Provider 资格评估 | 双重授权、预算 runner、v5 Prompt、`NOT_QUALIFIED` 结论 | Evaluation Slice 3 | 已完成并推送 |
 
 ## 需求到证据的查找方式
 
@@ -27,6 +31,7 @@
 | 密钥未进入仓库 | `.gitignore`、`.env.example`、Phase 2 污染检查 |
 | 长期记忆由用户控制 | MemoryCandidate/MemoryDecision API、Slice 1 测试、Slice 4 前端决定入口 |
 | Baseline 不伪造趋势 | `quantitative-baseline/v1`、样本不足测试、字段级来源下钻 |
+| 自动通过不冒充语义质量 | `evaluation_summary_v1.json`、三轮 Human Review、`NOT_QUALIFIED` 决定 |
 
 ## 后续 commit 规则
 

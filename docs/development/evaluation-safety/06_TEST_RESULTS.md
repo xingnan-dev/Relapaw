@@ -93,3 +93,22 @@
 | 资格结论 | `NOT_QUALIFIED` |
 
 该结果表示评估流程成功完成，但当前 Provider/模型/Prompt 组合没有获得产品质量资格。硬门禁通过不等于语义质量通过。
+
+## 2026-10-13 — Slice 4 报告一致性与完整回归
+
+| 检查 | 结果 |
+| --- | --- |
+| 冻结摘要校验 CLI | `verified: true`，`errors: []` |
+| 摘要专项测试 | 4 passed |
+| 离线 / recorded-output 案例 | 9 / 14 |
+| 真实评估轮次 / 请求 | 3 / 6 |
+| 最终资格结论 | `NOT_QUALIFIED` |
+| 摘要中的真实执行命令 | 0 |
+| 后端全量测试 | 114 passed |
+| 前端全量测试 | 56 passed |
+| 前端生产构建 | passed |
+| Alembic | `20261012_0008 (head)` |
+| Python 依赖一致性 | `No broken requirements found` |
+| `git diff --check` | passed |
+
+本轮没有调用真实 Provider、没有新增模型费用，也没有写入产品数据库。自动检查和人工验收均已完成；commit/push 仍分别受明确授权控制。

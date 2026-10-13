@@ -17,15 +17,15 @@
 | 主题 | 已完成证据 | 后续缺口 |
 |---|---|---|
 | 真实用户问题 | Observation 与 Interpretation 分离、Timeline 与 Follow-up | 比赛叙事与用户画像整理 |
-| AI 差异化 | Evidence/Uncertainty/Confirmation、失败审计、Safety short-circuit | Evaluation 指标与对照案例 |
+| AI 差异化 | Evidence/Uncertainty/Confirmation、失败审计、Safety short-circuit、版本化 Evaluation 与模型资格决定 | 更换模型后的重新资格评估属于后续独立工作 |
 | 工程完整性 | 前后端、迁移、测试、build、Git 历史 | PostgreSQL、部署、监控和恢复演练 |
-| 安全负责 | 不诊断、不治疗、非 NORMAL 不调用、密钥边界 | 版本化 Safety/Evaluation 数据集 |
-| 人机协作 | 真实 REJECTED Claim 与 Prompt 迭代 | 更多语言/边界样本和统计 |
+| 安全负责 | 不诊断、不治疗、非 NORMAL 不调用、密钥边界、版本化 Safety/Evaluation 数据集 | 生产监控与漂移检测 |
+| 人机协作 | 真实 REJECTED Claim、三轮 Prompt 迭代、最终 `NOT_QUALIFIED` 人工决定 | 最终演示素材整理 |
 | 展示质量 | 核心路径可运行 | Design System、完整 UI 精修、Demo 视频 |
 
 轻量 Design System 已于 2026-10-11 完成自动回归和浏览器可用性验收；完整 UI/UX 与品牌精修仍按总指引安排在 Phase 3 和 Evaluation 之后。
 
-Phase 3 已建立 Requirements、Architecture、Scope、Acceptance 和固定实施切片；Slice 1–3 已实现、人工验收并推送。Slice 4 的前端闭环、自动回归和浏览器人工验收已完成，目前只剩 commit/push Git 门禁，因此在完成门禁前仍不得把整个 Phase 3 描述为已关闭。
+Phase 3 的四个 Slice 已实现、自动回归、人工验收并推送，阶段已关闭。Evaluation 的四个 Slice 均已实现、完成自动回归并通过人工验收；当前模型组合的真实资格结论为 `NOT_QUALIFIED`。
 
 ## 最终提交前门禁
 
@@ -35,7 +35,7 @@ Phase 3 已建立 Requirements、Architecture、Scope、Acceptance 和固定实�
 - [ ] 至少展示一条“人类目标 → AI 实现 → 失败 → 修复 → 验收”的真实链路；
 - [ ] 展示 Git commit、测试、Review、人工决定和运行界面的一致版本；
 - [ ] 第三方代码、素材、字体、图标和数据来源完整；
-- [ ] 不把未完成的 Phase 3–6、部署或 Evaluation 描述为已实现；
+- [ ] 不把未完成的 Phase 4–6、部署、生产监控或新模型资格描述为已实现；
 - [ ] 演示环境不含 API key、个人路径、私人窗口或真实敏感数据；
 - [ ] Release Candidate 门禁全部通过并创建比赛版本标签。
 

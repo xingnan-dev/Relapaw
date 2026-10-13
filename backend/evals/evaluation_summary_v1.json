@@ -1,0 +1,83 @@
+{
+  "version": "evaluation-summary/v1",
+  "frozen_on": "2026-10-13",
+  "offline_evaluation": {
+    "dataset": "text-understanding-eval/v1",
+    "total_cases": 9,
+    "expectation_matches": 9,
+    "network_calls": 0
+  },
+  "recorded_output_evaluation": {
+    "dataset": "recorded-output-eval/v1",
+    "total_cases": 14,
+    "expectation_matches": 14,
+    "version_groups": 2,
+    "network_calls": 0
+  },
+  "live_provider_evaluation": {
+    "dataset": "live-provider-eval/v1",
+    "provider": "qwen",
+    "model": "qwen3.8-flash",
+    "runs": [
+      {
+        "run_id": "live-v3-01",
+        "prompt_contract_version": "text-understanding/v3-provider-neutral",
+        "budget": {"max_requests": 2, "max_output_tokens_per_request": 800, "timeout_seconds": 30},
+        "requests_sent": 2,
+        "retries": 0,
+        "database_writes": 0,
+        "hard_gate": "passed",
+        "human_review": "failed",
+        "latency_ms": [7252.751, 7698.499],
+        "findings": ["OWNER_INTERPRETATION_USED_AS_SUPPORT", "UNRECORDED_CAUSE", "UNSUPPORTED_INTERNAL_STATE", "WINDOWS_STDOUT_ENCODING"]
+      },
+      {
+        "run_id": "live-v4-02",
+        "prompt_contract_version": "text-understanding/v4-evidence-boundary",
+        "budget": {"max_requests": 2, "max_output_tokens_per_request": 800, "timeout_seconds": 30},
+        "requests_sent": 2,
+        "retries": 0,
+        "database_writes": 0,
+        "hard_gate": "failed",
+        "human_review": "failed",
+        "latency_ms": [6126.455, 2958.447],
+        "findings": ["LANGUAGE_MISMATCH", "OWNER_HYPOTHESIS_AS_CLAIM", "UNRECORDED_CAUSE"]
+      },
+      {
+        "run_id": "live-v5-03",
+        "prompt_contract_version": "text-understanding/v5-grounded-claims",
+        "budget": {"max_requests": 2, "max_output_tokens_per_request": 800, "timeout_seconds": 30},
+        "requests_sent": 2,
+        "retries": 0,
+        "database_writes": 0,
+        "hard_gate": "passed",
+        "human_review": "failed",
+        "latency_ms": [3298.007, 3455.981],
+        "findings": ["OBSERVATION_RESTATEMENT", "TEMPORAL_ORDER_DRIFT", "OVERCONFIDENT_LABEL", "UNRECORDED_CAUSE"]
+      }
+    ]
+  },
+  "qualification": {
+    "status": "NOT_QUALIFIED",
+    "subject": "qwen/qwen3.8-flash + text-understanding/v5-grounded-claims",
+    "reason": "Deterministic hard gates passed in the final run, but human semantic review found temporal drift and unsupported unrecorded causes.",
+    "product_boundary": "Outputs remain proposals requiring explicit user confirmation; this qualification does not authorize autonomous fact or memory writes."
+  },
+  "known_limitations": [
+    "Lexical safety checks are warning signals, not medical or semantic correctness guarantees.",
+    "The live sample contains two de-identified cases and is not statistically representative.",
+    "Provider token usage and monetary cost were not exposed by the current adapter and are not claimed.",
+    "Raw live outputs are intentionally not committed; only aggregate findings and review decisions are retained.",
+    "A different model, contract, or dataset requires a new qualification decision."
+  ],
+  "reproduction": {
+    "network_required": false,
+    "commands": [
+      ".venv\\Scripts\\python.exe -m app.evaluation.text_understanding evals\\text_understanding_v1.json",
+      ".venv\\Scripts\\python.exe -m app.evaluation.recorded_outputs evals\\recorded_outputs_v1.json",
+      ".venv\\Scripts\\python.exe -m app.evaluation.live_provider evals\\live_provider_v1.json",
+      ".venv\\Scripts\\python.exe -m app.evaluation.summary_report evals\\evaluation_summary_v1.json"
+    ]
+  },
+  "evidence_commits": ["1d1e257", "ec1bbc2", "e89f9eb"]
+}

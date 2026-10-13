@@ -9,7 +9,7 @@
 | 工具 | 类型 | 在 Relapaw 中的用途 | 不承担的职责 | 证据 |
 |---|---|---|---|---|
 | OpenAI Codex（桌面工作区代理） | AI Coding 工具 | 需求拆解、仓库审计、架构方案、代码与测试实现、命令执行、代码审查、缺陷修复、回归和文档维护 | 不替代产品负责人作最终范围决定；未经授权不 commit/push；不替代人工验收 | 各 Phase 的 `04_PROMPTS.md`、`05_IMPLEMENTATION_LOG.md`、`07_AI_CODE_REVIEW.md`、`08_FIX_AND_REGRESSION.md`、`09_ACCEPTANCE.md` |
-| Qwen（阿里云百炼） | 产品运行时文本模型 Provider | 在 SafetyCheck=`NORMAL` 后，根据当前 Episode 的三类输入生成严格结构化、待确认的可能解释 | 不诊断、不治疗、不联网检索、不改写人工记录、不自动写入 Baseline | `docs/development/phase-2/`、提交 `f0229ee` |
+| Qwen（阿里云百炼） | 产品运行时文本模型 Provider | 在 SafetyCheck=`NORMAL` 后，根据当前 Episode 的三类输入生成严格结构化、待确认的可能解释 | 不诊断、不治疗、不联网检索、不改写人工记录、不自动写入 Baseline；当前 qwen3.8-flash/v5 组合经 Evaluation 判定为 `NOT_QUALIFIED` | `docs/development/phase-2/`、`docs/development/evaluation-safety/` |
 | OpenAI Python SDK | Provider 接入 SDK | OpenAI Responses Structured Outputs；以及 Qwen OpenAI-compatible Chat Completions JSON Schema 调用 | 不绕过应用侧 Pydantic/Evidence 校验；不在前端持有密钥 | `backend/app/services/understanding_adapter.py`、Provider mock 测试 |
 | FakeAdapter / mock client | 自动测试替身 | 离线验证成功、错误、非法 Evidence、事务回滚和 Safety short-circuit | 不在产品界面生成伪结果，不访问付费 API | `backend/tests/test_text_understanding.py`、`backend/tests/test_openai_understanding_adapter.py` |
 

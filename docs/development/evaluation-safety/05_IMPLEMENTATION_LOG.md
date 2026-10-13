@@ -61,3 +61,11 @@
 - 英文输出继续将未记录的声音或移动写为可能触发原因，违反 Grounded Claim 边界。
 - 人工 Review 判定 Qwen `qwen3.8-flash` + `text-understanding/v5-grounded-claims` 为 `NOT_QUALIFIED`。
 - 停止继续付费 Prompt 试错。该结论不删除失败证据，也不包装为模型质量通过；如需更换模型或重构契约，进入独立后续 Slice。
+
+## 2026-10-13 — Slice 4 报告与证据收口
+
+- 新增版本化机器摘要 `evaluation_summary_v1.json`，统一引用 Slice 1–3 的冻结指标、预算和资格结论。
+- 新增离线摘要校验器，检查期待结果、真实请求预算、零重试、零数据库写入、人工 Review 与资格结论的一致性。
+- 摘要中的复现命令仅覆盖离线与 recorded-output 评估，不包含 `--execute`，不会隐式发起真实 Provider 请求。
+- 新增最终报告、已知限制和人工 Review 记录；明确自动硬门禁通过不等于语义质量合格。
+- 比赛证据映射已同步到真实提交与失败证据；生产监控、漂移检测、成本遥测和新模型重新资格评估仍属于后续工作。

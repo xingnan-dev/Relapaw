@@ -57,6 +57,6 @@ npm run build
 
 ## 当前阶段
 
-当前为 **Phase 2：文本 Understanding**。应用已具备人工结构化记录、Safety/VeterinaryEscalation、Timeline、复评与观察计划，并可从 NORMAL SafetyCheck 的 Episode 发起结构化文本分析，保存可追溯的 Claim、Evidence、Uncertainty、模型版本和用户逐条决定。
+Phase 2 文本 Understanding、Phase 3 长期记忆/量化 Baseline 与 Evaluation & Safety 已完成。当前 Qwen `qwen3.8-flash` + `text-understanding/v5-grounded-claims` 的真实资格结论为 `NOT_QUALIFIED`。
 
-真实文本分析使用可选的 OpenAI Responses Adapter；未配置服务端 key/model 时安全返回 `MODEL_NOT_CONFIGURED`。当前仍不包含 RAG、Agent Loop、多模态识别、自动诊断、处方/用药建议或模型自动修改人工记录与 Baseline。详见 [产品核心](docs/PRODUCT_CORE.md)、[技术架构](docs/ARCHITECTURE.md)、[UX 架构](docs/UX_ARCHITECTURE.md)、[产品路线](docs/ROADMAP.md) 与 [AI Coding 开发生命周期](docs/development/INDEX.md)。
+真实文本分析使用可选的 OpenAI Responses Adapter；未配置服务端 key/model 时安全返回 `MODEL_NOT_CONFIGURED`。`NOT_QUALIFIED` 表示当前组合不得被描述为已获得产品语义质量资格，不影响离线评估与失败审计证据的有效性。当前仍不包含 RAG、Agent Loop、多模态识别、自动诊断、处方/用药建议或模型自动修改人工记录与 Baseline。详见 [产品核心](docs/PRODUCT_CORE.md)、[技术架构](docs/ARCHITECTURE.md)、[UX 架构](docs/UX_ARCHITECTURE.md)、[产品路线](docs/ROADMAP.md) 与 [AI Coding 开发生命周期](docs/development/INDEX.md)。

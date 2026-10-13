@@ -12,3 +12,6 @@
 - [评估说明](04_EVALUATION_PROTOCOL.md)
 - [实施日志](05_IMPLEMENTATION_LOG.md)
 - [测试结果](06_TEST_RESULTS.md)
+- [最终报告](07_FINAL_REPORT.md)
+- [已知限制](08_KNOWN_LIMITATIONS.md)
+- [人工复核记录](09_HUMAN_REVIEW.md)
