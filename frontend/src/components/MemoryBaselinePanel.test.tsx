@@ -34,6 +34,7 @@ describe("memory and baseline closure", () => {
     render(<MemoryBaselinePanel petId={7} />);
     expect(await screen.findByText("人工档案 Baseline")).toBeInTheDocument();
     expect(await screen.findByText(/一种经用户确认/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "7 天" })).toHaveAttribute("aria-pressed", "true");
     expect((await screen.findAllByText(/样本 3/)).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByText("查看来源（1）"));
     expect(screen.getByText(/EPISODE · duration_seconds/)).toBeInTheDocument();
@@ -59,7 +60,7 @@ describe("memory and baseline closure", () => {
     expect(await within(card).findByRole("alert")).toHaveTextContent("当前状态均已保留");
     expect(within(card).getByText(/一种经用户确认/)).toBeInTheDocument();
     fireEvent.click(within(card).getByRole("button", { name: "纳入长期记忆" }));
-    await waitFor(() => expect(within(card).getByText("ACTIVE")).toBeInTheDocument());
+    await waitFor(() => expect(within(card).getByText("已纳入")).toBeInTheDocument());
     expect(JSON.parse(bodies[0]).request_id).toBe(JSON.parse(bodies[1]).request_id);
   });
 
@@ -97,7 +98,8 @@ describe("memory and baseline closure", () => {
       return json({}, false, 404);
     }));
     render(<MemoryBaselinePanel petId={7} />);
-    expect(await screen.findByText(/stale · 来源已变化/)).toBeInTheDocument();
+    expect(await screen.findByText("来源已变化")).toBeInTheDocument();
+    expect(screen.getByText(/7 天快照 · 数据不足/)).toBeInTheDocument();
     expect(screen.getByText("样本不足，不生成趋势。")).toBeInTheDocument();
   });
 

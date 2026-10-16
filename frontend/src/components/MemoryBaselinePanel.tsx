@@ -3,7 +3,19 @@ import { ApiError, decideMemoryCandidate, getLatestBaselineSnapshot, getPetBasel
 import type { BaselineMetric, BaselineSnapshot, BaselineWindow, MemoryCandidate, MemoryDecisionType, PetBaseline } from "../types";
 import { Button, StatusNotice, Surface } from "./ui";
 
-const windows: BaselineWindow[] = ["7d", "30d", "90d", "all"];
+const windows: Array<{ value: BaselineWindow; label: string }> = [
+  { value: "7d", label: "7 天" },
+  { value: "30d", label: "30 天" },
+  { value: "90d", label: "90 天" },
+  { value: "all", label: "全部" },
+];
+const memoryStateLabels: Record<MemoryCandidate["state"], string> = {
+  ELIGIBLE: "待决定", ACTIVE: "已纳入", WITHDRAWN: "已撤回", STALE: "来源已变化",
+};
+const snapshotStatusLabels: Record<BaselineSnapshot["status"], string> = {
+  READY: "数据充足", INSUFFICIENT_DATA: "数据不足", EMPTY: "暂无数据",
+};
+const windowLabels: Record<BaselineWindow, string> = { "7d": "7 天", "30d": "30 天", "90d": "90 天", all: "全部时间" };
 const baselineLabels: Record<keyof Omit<PetBaseline, "id" | "pet_id">, string> = {
   social_behavior: "社交行为", activity_pattern: "活动规律", feeding_pattern: "饮食规律",
   resting_pattern: "休息规律", handling_preference: "接触偏好", hiding_pattern: "躲藏规律",
@@ -71,7 +83,7 @@ function CandidateCard({ candidate, onChange }: { candidate: MemoryCandidate; on
     finally { setPending(false); }
   }
   return <Surface tone={candidate.state === "ACTIVE" ? "emphasis" : "default"} className="memory-card">
-    <div className="state-heading"><strong>候选 #{candidate.id}</strong><span>{candidate.state}{candidate.is_stale ? " · stale" : ""}</span></div>
+    <div className="state-heading"><strong>候选 #{candidate.id}</strong><span>{memoryStateLabels[candidate.state]}{candidate.is_stale && candidate.state !== "STALE" ? " · 来源已变化" : ""}</span></div>
     <p>{candidate.claim_snapshot.statement}</p>
     <p className="meta-line">模型生成，经用户确认 · {candidate.claim_snapshot.claim_type} · 置信度 {candidate.claim_snapshot.confidence_label}</p>
     {candidate.is_stale && <StatusNotice tone="warning">来源 Episode 已变化；该候选不可重新纳入，但仍可撤回既有纳入决定。</StatusNotice>}
@@ -100,10 +112,10 @@ function QuantitativeBaseline({ petId }: { petId: number }) {
   }
   return <section aria-labelledby="quantitative-baseline-title"><h3 id="quantitative-baseline-title">量化 Baseline</h3>
     <p className="section-help">由已记录数据按固定算法计算，不是模型判断；每个快照冻结时间边界与来源。</p>
-    <div className="window-tabs" aria-label="Baseline 时间窗口">{windows.map((item) => <Button key={item} variant={item === window ? "primary" : "secondary"} aria-pressed={item === window} onClick={() => setWindow(item)}>{item}</Button>)}</div>
-    {state === "loading" && <p role="status">正在读取 {window} 快照…</p>}
+    <div className="window-tabs" aria-label="Baseline 时间窗口">{windows.map((item) => <Button key={item.value} variant={item.value === window ? "primary" : "secondary"} aria-pressed={item.value === window} onClick={() => setWindow(item.value)}>{item.label}</Button>)}</div>
+    {state === "loading" && <p role="status">正在读取 {windowLabels[window]}快照…</p>}
     {state === "error" && <StatusNotice tone="warning" role="alert" action={<Button onClick={() => void load()}>重试读取</Button>}>快照读取失败。</StatusNotice>}
-    {state === "empty" && <StatusNotice title="尚无快照" action={<Button busy={recomputing} onClick={() => void recompute()}>计算 {window} Baseline</Button>}>不会用空数据推测趋势。</StatusNotice>}
+    {state === "empty" && <StatusNotice title="尚无快照" action={<Button busy={recomputing} onClick={() => void recompute()}>计算 {windowLabels[window]} Baseline</Button>}>不会用空数据推测趋势。</StatusNotice>}
     {snapshot && <SnapshotView snapshot={snapshot} onRecompute={recompute} recomputing={recomputing} />}
     {recomputeError && <StatusNotice tone="danger" role="alert" action={<Button onClick={() => void recompute()}>重试重算</Button>}>{recomputeError}</StatusNotice>}
   </section>;
@@ -111,7 +123,7 @@ function QuantitativeBaseline({ petId }: { petId: number }) {
 
 function SnapshotView({ snapshot, onRecompute, recomputing }: { snapshot: BaselineSnapshot; onRecompute: () => void; recomputing: boolean }) {
   return <Surface tone="subtle" className="snapshot-card">
-    <div className="state-heading"><strong>{snapshot.window} 快照 · {snapshot.status}</strong>{snapshot.is_stale && <span className="stale-badge">stale · 来源已变化</span>}</div>
+    <div className="state-heading"><strong>{windowLabels[snapshot.window]}快照 · {snapshotStatusLabels[snapshot.status]}</strong>{snapshot.is_stale && <span className="stale-badge">来源已变化</span>}</div>
     <p className="meta-line">样本 {snapshot.sample_count} · 截止 {new Date(snapshot.as_of).toLocaleString()} · 算法 {snapshot.algorithm_version}</p>
     {snapshot.status !== "READY" && <StatusNotice tone="info">{snapshot.status === "EMPTY" ? "窗口内没有可计算的数据。" : "样本不足，不生成趋势。"}</StatusNotice>}
     <Button busy={recomputing} onClick={onRecompute}>{recomputing ? "正在重算…" : "按当前数据重算"}</Button>
@@ -122,7 +134,7 @@ function SnapshotView({ snapshot, onRecompute, recomputing }: { snapshot: Baseli
 function MetricView({ metric, evidences }: { metric: BaselineMetric; evidences: BaselineSnapshot["evidences"] }) {
   return <article className="metric-card"><h4>{metric.behavior_type || metric.episode_type || metric.field}</h4>
     <p>{"median" in metric ? `中位数 ${metric.median ?? "—"}${metric.unit ? ` ${metric.unit}` : ""} · 范围 ${metric.min ?? "—"}–${metric.max ?? "—"}` : `出现 ${metric.count} 次 · 覆盖 ${metric.observation_days ?? 0} 天`}</p>
-    <p className="meta-line">样本 {metric.count} · {metric.status}{metric.trend ? ` · 趋势 ${formatValue(metric.trend)}` : " · 无趋势结论"}</p>
+    <p className="meta-line">样本 {metric.count} · {snapshotStatusLabels[metric.status as keyof typeof snapshotStatusLabels] ?? metric.status}{metric.trend ? ` · 趋势 ${formatValue(metric.trend)}` : " · 无趋势结论"}</p>
     <details><summary>查看来源（{evidences.length}）</summary>{evidences.length === 0 ? <p>无来源项。</p> : <ul>{evidences.map((item) => <li key={item.id}><strong>{item.window_segment}</strong> · {item.source_type} · {item.field_path}<br />值：{formatValue(item.value_snapshot)} · {new Date(item.observed_at).toLocaleString()}{item.episode_id === null ? " · 原记录已删除，保留快照" : ""}</li>)}</ul>}</details>
   </article>;
 }

@@ -15,6 +15,7 @@ export function Surface({ tone = "default", className = "", children, ...props }
 }
 
 type NoticeTone = "neutral" | "info" | "success" | "warning" | "danger";
+type BadgeTone = NoticeTone | "accent";
 
 export function StatusNotice({ tone = "neutral", title, role, action, children, className = "" }: {
   tone?: NoticeTone;
@@ -28,4 +29,21 @@ export function StatusNotice({ tone = "neutral", title, role, action, children, 
     <div>{title && <strong className="status-notice__title">{title}</strong>}<div className="status-notice__body">{children}</div></div>
     {action && <div className="status-notice__action">{action}</div>}
   </div>;
+}
+
+export function Badge({ tone = "neutral", children, className = "", ...props }: HTMLAttributes<HTMLSpanElement> & { tone?: BadgeTone }) {
+  return <span className={["ui-badge", `ui-badge--${tone}`, className].filter(Boolean).join(" ")} {...props}>{children}</span>;
+}
+
+export function SectionHeader({ eyebrow, title, description, action, className = "" }: {
+  eyebrow?: ReactNode;
+  title: ReactNode;
+  description?: ReactNode;
+  action?: ReactNode;
+  className?: string;
+}) {
+  return <header className={["section-header", className].filter(Boolean).join(" ")}>
+    <div>{eyebrow && <p className="section-header__eyebrow">{eyebrow}</p>}<h2>{title}</h2>{description && <p className="section-header__description">{description}</p>}</div>
+    {action && <div className="section-header__action">{action}</div>}
+  </header>;
 }

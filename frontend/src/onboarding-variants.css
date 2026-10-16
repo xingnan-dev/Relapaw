@@ -1,0 +1,55 @@
+.onboarding-lab { min-height: 100vh; padding: 72px clamp(20px, 5vw, 76px) 96px; color: #344a42; background: #dce6e1; font-family: Inter, "Noto Sans SC", "Microsoft YaHei", sans-serif; }
+.onboarding-lab * { box-sizing: border-box; }
+.onboarding-lab__hero { max-width: 1280px; margin: auto; padding: 62px; border-radius: 34px; display: grid; grid-template-columns: 1.15fr .85fr; gap: 64px; align-items: end; background: #fffdf7; box-shadow: 0 22px 60px rgba(56, 72, 64, .1); }
+.onboarding-lab__hero p:first-child, .onboarding-rules > div p, .onboarding-direction__copy > p:first-of-type { margin: 0 0 14px; font-size: 11px; font-weight: 800; letter-spacing: .18em; color: #7b9189; }
+.onboarding-lab__hero h1 { margin: 0; font-family: "Noto Serif SC", "Songti SC", serif; font-size: clamp(44px, 6vw, 78px); line-height: 1.08; font-weight: 600; }
+.onboarding-lab__hero > p { margin: 0; font-size: 18px; line-height: 1.8; color: #677871; }
+.onboarding-rules { max-width: 1280px; margin: 28px auto 54px; padding: 40px 46px; display: grid; grid-template-columns: 260px 1fr; gap: 48px; border: 1px solid rgba(72, 91, 83, .14); border-radius: 28px; background: rgba(255, 253, 247, .72); }
+.onboarding-rules h2 { margin: 0; font: 600 30px/1.2 "Noto Serif SC", "Songti SC", serif; }
+.onboarding-rules dl { margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px 30px; }
+.onboarding-rules dt { margin-bottom: 7px; font-weight: 800; }
+.onboarding-rules dd { margin: 0; font-size: 14px; line-height: 1.65; color: #697872; }
+.onboarding-directions { max-width: 1280px; margin: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
+.onboarding-direction { min-height: 760px; padding: 42px; display: grid; grid-template-columns: minmax(0, .78fr) 320px; gap: 30px; align-items: center; overflow: hidden; border-radius: 32px; background: #fffdf8; box-shadow: 0 18px 44px rgba(58, 72, 66, .1); }
+.onboarding-direction__copy > span { font: 500 58px/1 Georgia, serif; color: #b5c6bf; }
+.onboarding-direction__copy h2 { margin: 8px 0 15px; font: 600 34px/1.15 "Noto Serif SC", "Songti SC", serif; }
+.onboarding-direction__copy > p:not(:first-of-type) { margin: 0; font-size: 15px; line-height: 1.75; color: #6b7974; }
+.onboarding-direction__copy ul { margin: 26px 0 0; padding: 0; list-style: none; }
+.onboarding-direction__copy li { padding: 9px 0; border-bottom: 1px dashed #d7ded9; font-size: 13px; }
+.ov-screen { position: relative; width: 320px; height: 650px; padding: 28px 24px 24px; overflow: hidden; border-radius: 36px; background: #fbfaf5; box-shadow: 0 18px 38px rgba(48, 58, 53, .18); }
+.ov-screen button { position: absolute; z-index: 5; left: 24px; right: 24px; bottom: 24px; min-height: 52px; border: 0; border-radius: 17px; font: 750 15px/1 sans-serif; color: white; background: #789e90; }
+.ov-screen button b { margin-left: 14px; }
+.ov-story-dots { position: relative; z-index: 5; display: flex; gap: 6px; }
+.ov-story-dots i { width: 24px; height: 4px; border-radius: 10px; background: rgba(79, 100, 91, .18); }
+.ov-story-dots i.active { width: 38px; background: #638778; }
+.ov-copy { position: relative; z-index: 3; }
+.ov-copy p { margin: 0 0 10px; font-size: 10px; font-weight: 800; letter-spacing: .13em; color: #6c8d81; }
+.ov-copy h3 { margin: 0 0 14px; font-size: 30px; line-height: 1.13; color: #30473f; }
+.ov-copy span { display: block; font-size: 14px; line-height: 1.65; color: #68766f; }
+.ov-companion { overflow: visible; fill: none; stroke: #527a6d; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ov-companion__body { fill: rgba(255, 253, 247, .5); }
+.ov-companion__ground { opacity: .6; }
+.ov-screen--orbit { background: linear-gradient(155deg, #e6eef4, #ece7f2 58%, #f8edda); }
+.ov-orbit-stage { height: 325px; margin-top: 16px; position: relative; border-radius: 48% 52% 46% 54%; background: radial-gradient(circle, rgba(255,255,255,.86) 0 34%, transparent 35%), linear-gradient(145deg, rgba(188,215,205,.45), transparent 56%); }
+.ov-orbit-stage::after { content: ""; position: absolute; inset: 34px 8px; border-right: 1px solid rgba(81, 115, 103, .35); border-radius: 50%; transform: rotate(12deg); }
+.ov-orbit-stage .ov-companion { position: absolute; width: 145px; left: 66px; top: 86px; }
+.ov-float { position: absolute; z-index: 3; display: grid; place-items: center; width: 46px; height: 46px; padding: 7px; border: 3px solid rgba(255,255,255,.9); border-radius: 44% 56% 49% 51%; color: #638778; background: rgba(255,255,255,.86); box-shadow: 0 7px 16px rgba(63, 82, 74, .12); }
+.ov-orbit-doodle { width: 100%; height: 100%; overflow: visible; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ov-float--one { top: 58px; left: 5px; transform: rotate(-7deg); color: #8b7b64; background: #f7e2ac; }.ov-float--two { top: 122px; right: -2px; transform: rotate(6deg); color: #94758b; background: #edd8e5; }.ov-float--three { bottom: 28px; left: 10px; transform: rotate(4deg); color: #587b70; background: #dce9df; }.ov-float--paw { right: 25px; bottom: 10px; color: #628194; background: #dbe8ed; }
+.ov-screen--orbit .ov-copy { margin-top: -4px; }.ov-screen--orbit .ov-copy h3 { font-family: "Noto Serif SC", serif; font-weight: 600; }
+.onboarding-direction--orbit { background: linear-gradient(145deg, #fffdf7, #e4edf1); }
+.ov-screen--poster { background: linear-gradient(155deg, #f3c7d8 0 37%, #f4d781 37% 70%, #c9dfce 70%); }
+.ov-poster-tag { display: inline-block; margin-top: 58px; padding: 7px 10px; border: 1.5px solid #30473f; border-radius: 99px; font-size: 9px; font-weight: 900; letter-spacing: .08em; background: #fffdf8; transform: rotate(-2deg); }
+.ov-screen--poster .ov-copy { margin-top: 20px; width: 94%; }.ov-screen--poster .ov-copy p { display: none; }.ov-screen--poster .ov-copy h3 { font-size: 41px; font-weight: 900; letter-spacing: -.05em; }.ov-screen--poster .ov-copy span { max-width: 200px; color: #34463f; font-weight: 650; }
+.ov-poster-character { position: absolute; right: -32px; bottom: 92px; width: 220px; height: 208px; border-radius: 52% 48% 0 0; background: #8cae9c; }.ov-poster-character .ov-companion { position: absolute; width: 205px; left: -14px; bottom: 0; stroke-width: 2.4; }
+.ov-poster-note { position: absolute; z-index: 4; right: 15px; top: 343px; padding: 12px 14px; transform: rotate(7deg); border: 1.5px solid #30473f; border-radius: 12px; background: #fffdf8; font: 700 12px/1.4 "Noto Serif SC", serif; }
+.ov-screen--poster button { right: 110px; background: #344a42; }.onboarding-direction--poster { background: linear-gradient(145deg, #fff9e9, #f0d9e3); }
+.ov-screen--storybook { background: #fcf7ed; }.ov-story-kicker { margin: 60px 0 8px; font-size: 11px; letter-spacing: .12em; color: #a27d72; }.ov-screen--storybook .ov-copy h3 { font: 600 36px/1.2 "Noto Serif SC", "Songti SC", serif; }.ov-screen--storybook .ov-copy p { display: none; }
+.ov-story-scene { position: absolute; left: 0; right: 0; bottom: 94px; height: 255px; overflow: hidden; background: linear-gradient(180deg, transparent, #e5e9dc); }.ov-story-scene .ov-companion { position: absolute; width: 225px; left: 38px; bottom: 15px; }.ov-human-mark { position: absolute; width: 100px; height: 160px; right: -48px; bottom: 14px; border: 2px solid #b88d83; border-radius: 60% 0 0 0; border-right: 0; }
+.ov-hand-note { position: absolute; z-index: 3; bottom: 188px; left: 29px; transform: rotate(-3deg); font: 600 13px "KaiTi", cursive; color: #817268; }.ov-screen--storybook button { right: 158px; color: #435a51; background: #fffdf8; border: 1px solid #bec9c1; }.onboarding-direction--storybook { background: linear-gradient(145deg, #f4eee4, #e4eadd); }
+.ov-screen--journal { padding: 34px 18px 20px; background: #eee9de; }.ov-screen--journal .ov-story-dots { margin-left: 7px; }.ov-journal-tape { position: absolute; z-index: 8; top: 52px; left: 116px; width: 88px; height: 27px; transform: rotate(2deg); background: repeating-linear-gradient(90deg, rgba(246,224,149,.72) 0 3px, rgba(255,240,185,.65) 3px 7px); clip-path: polygon(2% 8%, 98% 0, 95% 91%, 3% 100%); box-shadow: 0 2px 2px rgba(94,81,49,.08); }
+.ov-journal-paper { position: relative; min-height: 395px; margin-top: 26px; padding: 40px 26px 22px; border: 1px solid #d8d5ca; border-radius: 24px 30px 20px 27px; background: #fffdf6; box-shadow: 7px 9px 0 #dce6df; transform: rotate(-1deg); }.ov-journal-paper .ov-copy h3 { font-family: "Noto Serif SC", serif; font-weight: 600; }.ov-journal-paper .ov-copy span { max-width: 185px; }.ov-journal-paper .ov-companion { position: absolute; width: 126px; right: 5px; bottom: 6px; }.ov-journal-index { display: block; margin-bottom: 12px; font-size: 10px; letter-spacing: .12em; color: #917c82; }.ov-sticker { position: absolute; right: -7px; top: 172px; padding: 9px 12px; transform: rotate(7deg); border: 3px solid #fff; border-radius: 9px 15px 11px 13px; background: #e8cbd8; box-shadow: 0 4px 9px rgba(81,64,70,.15); font: 700 11px "KaiTi", cursive; }
+.ov-profile-tease { position: relative; z-index: 3; margin: 17px 6px 0; padding: 15px 18px; border: 1px dashed #b8c6bf; border-radius: 16px; background: #f7f4eb; transform: rotate(1deg); }.ov-profile-tease span { float: right; font-size: 9px; color: #8b9992; }.ov-profile-tease strong, .ov-profile-tease small { display: block; }.ov-profile-tease strong { margin-bottom: 3px; font: 600 16px "Noto Serif SC", serif; }.ov-profile-tease small { font-size: 9px; color: #7b8882; }.ov-screen--journal button { left: 25px; right: 140px; bottom: 18px; min-height: 46px; }.onboarding-direction--journal { background: linear-gradient(145deg, #f8f2e7, #e8e1ec); }
+.onboarding-lab__recommendation { max-width: 1280px; margin: 28px auto 0; padding: 30px 38px; display: flex; gap: 28px; align-items: baseline; border-radius: 24px; background: #344a42; color: white; }.onboarding-lab__recommendation strong { flex: none; font-size: 20px; }.onboarding-lab__recommendation p { margin: 0; color: #dce8e2; line-height: 1.7; }
+@media (max-width: 1100px) { .onboarding-directions { grid-template-columns: 1fr; }.onboarding-direction { grid-template-columns: 1fr 320px; }.onboarding-rules dl { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 720px) { .onboarding-lab { padding: 18px 12px 54px; }.onboarding-lab__hero { padding: 34px 25px; grid-template-columns: 1fr; gap: 24px; border-radius: 24px; }.onboarding-lab__hero h1 { font-size: 42px; }.onboarding-lab__hero > p { font-size: 15px; }.onboarding-rules { padding: 30px 24px; grid-template-columns: 1fr; gap: 28px; }.onboarding-rules dl { grid-template-columns: 1fr; }.onboarding-direction { padding: 30px 18px 38px; grid-template-columns: 1fr; justify-items: center; }.onboarding-direction__copy { width: min(100%, 320px); }.ov-screen { width: 320px; max-width: 100%; }.onboarding-lab__recommendation { align-items: flex-start; flex-direction: column; gap: 8px; } }

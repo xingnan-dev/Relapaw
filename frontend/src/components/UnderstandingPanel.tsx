@@ -28,7 +28,7 @@ const stateCopy: Record<Exclude<RequestState, "idle" | "loading" | "completed">,
   "provider-unavailable": "模型服务暂时不可用或拒绝了本次请求。没有保存部分分析结果，请稍后重试。",
 };
 
-export function UnderstandingPanel({ episode }: { episode: Episode }) {
+export function UnderstandingPanel({ episode, onOpenMemory = () => undefined }: { episode: Episode; onOpenMemory?: () => void }) {
   const [runs, setRuns] = useState<AnalysisRun[]>([]);
   const [historyState, setHistoryState] = useState<"loading" | "ready" | "error">("loading");
   const [requestState, setRequestState] = useState<RequestState>("idle");
@@ -113,7 +113,7 @@ export function UnderstandingPanel({ episode }: { episode: Episode }) {
       {historyState === "ready" && runs.length === 0 && <p>尚无 AnalysisRun。</p>}
       {runs.length > 0 && <div className="analysis-history">{runs.map((run) => <button key={run.id} aria-pressed={run.id === activeRunId} onClick={() => setActiveRunId(run.id)}>#{run.id} · {run.status}{run.is_stale ? " · stale" : ""}<small>{new Date(run.created_at).toLocaleString()} · {run.error_code || "无错误"}</small></button>)}</div>}
     </section>
-    {activeRun && <AnalysisRunView run={activeRun} onDecision={(claimId, decision, confirmationId, createdAt) => updateClaim(activeRun.id, claimId, decision, confirmationId, createdAt)} />}
+    {activeRun && <AnalysisRunView run={activeRun} onOpenMemory={onOpenMemory} onDecision={(claimId, decision, confirmationId, createdAt) => updateClaim(activeRun.id, claimId, decision, confirmationId, createdAt)} />}
   </section>;
 }
 
@@ -121,18 +121,18 @@ function Detail({ label, children }: { label: string; children: React.ReactNode 
   return <section><strong>{label}</strong>{children}</section>;
 }
 
-function AnalysisRunView({ run, onDecision }: { run: AnalysisRun; onDecision: (claimId: number, decision: ConfirmationDecision, confirmationId: number, createdAt: string) => void }) {
+function AnalysisRunView({ run, onDecision, onOpenMemory }: { run: AnalysisRun; onDecision: (claimId: number, decision: ConfirmationDecision, confirmationId: number, createdAt: string) => void; onOpenMemory: () => void }) {
   return <article className="analysis-run" aria-label={`AnalysisRun ${run.id}`}>
     <header><h4>AnalysisRun #{run.id}</h4>{run.is_stale && <strong className="stale-badge">stale · 输入快照已过期</strong>}</header>
     <p><strong>状态：</strong>{run.status}{run.error_code ? ` · ${run.error_code}` : ""}</p>
     <dl className="contract-meta"><dt>模型</dt><dd>{run.model_provider} / {run.model_name} / {run.model_version}</dd><dt>Adapter</dt><dd>{run.adapter_name}</dd><dt>Prompt 契约</dt><dd>{run.prompt_contract_version}</dd><dt>输入契约</dt><dd>{run.input_contract_version}</dd><dt>输出契约</dt><dd>{run.output_contract_version}</dd></dl>
     {run.status === "BLOCKED_BY_SAFETY" && <StatusNotice tone="danger" title="Safety blocked">没有调用模型，也没有生成 Claim。</StatusNotice>}
     {run.status === "FAILED" && <StatusNotice tone="warning">此运行失败，没有可确认的模型结果。</StatusNotice>}
-    {run.claims.map((claim) => <ClaimView key={claim.id} claim={claim} runStale={run.is_stale} onDecision={onDecision} />)}
+    {run.claims.map((claim) => <ClaimView key={claim.id} claim={claim} runStale={run.is_stale} onDecision={onDecision} onOpenMemory={onOpenMemory} />)}
   </article>;
 }
 
-function ClaimView({ claim, runStale, onDecision }: { claim: AnalysisClaim; runStale: boolean; onDecision: (claimId: number, decision: ConfirmationDecision, confirmationId: number, createdAt: string) => void }) {
+function ClaimView({ claim, runStale, onDecision, onOpenMemory }: { claim: AnalysisClaim; runStale: boolean; onDecision: (claimId: number, decision: ConfirmationDecision, confirmationId: number, createdAt: string) => void; onOpenMemory: () => void }) {
   const [pending, setPending] = useState<ConfirmationDecision | null>(null);
   const [error, setError] = useState("");
   const [candidateState, setCandidateState] = useState<"idle" | "saving" | "created">("idle");
@@ -164,7 +164,7 @@ function ClaimView({ claim, runStale, onDecision }: { claim: AnalysisClaim; runS
     {claim.status === "PROPOSED" ? <div className="claim-actions"><Button busy={pending === "CONFIRMED"} disabled={pending !== null} onClick={() => void decide("CONFIRMED")}>{pending === "CONFIRMED" ? "正在确认…" : "确认此 Claim"}</Button><Button variant="danger" busy={pending === "REJECTED"} disabled={pending !== null} onClick={() => void decide("REJECTED")}>{pending === "REJECTED" ? "正在拒绝…" : "拒绝此 Claim"}</Button></div> : <p className="decision-state">用户已{claim.status === "CONFIRMED" ? "确认" : "拒绝"}；这是用户决定，不会改写原始记录。</p>}
     {claim.status === "CONFIRMED" && !runStale && candidateState !== "created" && <Button busy={candidateState === "saving"} onClick={() => void materializeCandidate()}>{candidateState === "saving" ? "正在建立候选…" : "建立长期记忆候选"}</Button>}
     {claim.status === "CONFIRMED" && runStale && <StatusNotice tone="warning">分析输入已 stale，不能建立新的长期记忆候选。</StatusNotice>}
-    {candidateState === "created" && <StatusNotice tone="success" role="status">候选已建立，尚未纳入长期记忆。请到“我们”页面明确决定。</StatusNotice>}
+    {candidateState === "created" && <StatusNotice tone="success" role="status" action={<Button onClick={onOpenMemory}>去我们页面确认</Button>}>候选已建立，尚未纳入长期记忆。</StatusNotice>}
     {candidateError && <StatusNotice tone="danger" role="alert">{candidateError}</StatusNotice>}
     {error && <StatusNotice tone="danger" role="alert">{error}</StatusNotice>}
   </section>;

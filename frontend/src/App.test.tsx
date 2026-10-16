@@ -20,7 +20,10 @@ function mockApi(options: { pets?: typeof pet[]; storedPetValid?: boolean; store
       return options.storedPetValid === false ? json({}, false, 404) : json(pet);
     }
     if (url.startsWith("/api/v1/pets/7/follow-ups")) return json([]);
+    if (url.startsWith("/api/v1/pets/7/observation-plans")) return json([]);
     if (url.startsWith("/api/v1/pets/7/timeline")) return json(options.timeline ?? { items: [], total: 0, page: 1, page_size: 20, has_more: false });
+    if (url === "/api/v1/episodes/11" && !init?.method) return json({ ...managedEpisode, id: 11 });
+    if (url === "/api/v1/episodes/12" && !init?.method) return json({ ...managedEpisode, id: 12 });
     if (url.startsWith("/api/v1/episodes/") && !init?.method) {
       const item = (options.timeline as { items?: unknown[] } | undefined)?.items?.[0];
       return item ? json(item) : json({ error: { code: "EPISODE_NOT_FOUND", message: "Episode not found" } }, false, 404);
@@ -37,7 +40,7 @@ beforeEach(() => {
 describe("entry flow", () => {
   it("shows onboarding on first use", async () => {
     render(<App />);
-    expect(await screen.findByRole("heading", { name: "Observation ≠ Interpretation" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "先看见，再慢慢理解" })).toBeInTheDocument();
   });
 
   it("can skip onboarding and reach pet setup", async () => {
@@ -60,6 +63,7 @@ describe("entry flow", () => {
     fireEvent.click(await screen.findByRole("button", { name: "添加我的宠物" }));
     fireEvent.change(screen.getByLabelText("名字"), { target: { value: "Mochi" } });
     fireEvent.change(screen.getByLabelText("物种"), { target: { value: "cat" } });
+    fireEvent.click(screen.getByRole("button", { name: "继续补充一点" }));
     fireEvent.click(screen.getByRole("button", { name: "完成建档" }));
     expect(await screen.findByRole("heading", { name: "Mochi" })).toBeInTheDocument();
     expect(localStorage.getItem("relapaw.currentPetId")).toBe("7");
@@ -81,6 +85,9 @@ describe("entry flow", () => {
     localStorage.setItem("relapaw.onboarding.completed", "true");
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "添加我的宠物" }));
+    fireEvent.change(screen.getByLabelText("名字"), { target: { value: "Mochi" } });
+    fireEvent.change(screen.getByLabelText("物种"), { target: { value: "cat" } });
+    fireEvent.click(screen.getByRole("button", { name: "继续补充一点" }));
     const mode = screen.getByLabelText("年龄填写方式");
     expect(screen.queryByLabelText("出生日期")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("大约年龄")).not.toBeInTheDocument();
@@ -90,6 +97,38 @@ describe("entry flow", () => {
     fireEvent.change(mode, { target: { value: "approximate_age" } });
     expect(screen.queryByLabelText("出生日期")).not.toBeInTheDocument();
     expect(screen.getByLabelText("大约年龄")).toBeInTheDocument();
+  });
+
+  it("shows only the active pet setup sheet and keeps first-step values when returning", async () => {
+    localStorage.setItem("relapaw.onboarding.completed", "true");
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "添加我的宠物" }));
+    fireEvent.change(screen.getByLabelText("名字"), { target: { value: "Mochi" } });
+    fireEvent.change(screen.getByLabelText("物种"), { target: { value: "cat" } });
+    fireEvent.click(screen.getByRole("button", { name: "继续补充一点" }));
+    expect(screen.queryByRole("heading", { name: "今天怎么称呼它？" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "还有一些小事" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "返回" }));
+    expect(screen.getByRole("heading", { name: "今天怎么称呼它？" })).toBeVisible();
+    expect(screen.getByLabelText("名字")).toHaveValue("Mochi");
+    expect(screen.getByLabelText("物种")).toHaveValue("cat");
+  });
+
+  it("keeps the details step behind the two required identity fields", async () => {
+    localStorage.setItem("relapaw.onboarding.completed", "true");
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "添加我的宠物" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "02 小档案" }));
+    expect(screen.getByRole("heading", { name: "今天怎么称呼它？" })).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText("名字"), { target: { value: "Mochi" } });
+    fireEvent.change(screen.getByLabelText("物种"), { target: { value: "cat" } });
+    fireEvent.click(screen.getByRole("button", { name: "02 小档案" }));
+    expect(screen.getByRole("heading", { name: "还有一些小事" })).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: /01 相识/ }));
+    expect(screen.getByRole("heading", { name: "今天怎么称呼它？" })).toBeVisible();
   });
 
   it("restores a valid current pet", async () => {
@@ -125,11 +164,65 @@ describe("main shell", () => {
     vi.stubGlobal("fetch", mockApi({ pets: [pet] }));
   });
 
-  it.each([["Today", "Mochi"], ["Understand", "它怎么啦？"], ["Timeline", "长期记录"], ["Us", "我们"]])("switches to %s", async (tab, heading) => {
+  it("shows the daily brand opening once and remembers entry for the local day", async () => {
+    const first = render(<App />);
+    await screen.findByRole("heading", { name: "Mochi" });
+    expect(screen.getByRole("region", { name: /今天，也好好看见它/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /和它一起开始/ }));
+    expect(screen.queryByRole("region", { name: /今天，也好好看见它/ })).not.toBeInTheDocument();
+    expect(localStorage.getItem("relapaw:daily-opening")).toBe(new Date().toLocaleDateString("en-CA"));
+    first.unmount();
+    render(<App />);
+    await screen.findByRole("heading", { name: "Mochi" });
+    expect(screen.queryByRole("region", { name: /今天，也好好看见它/ })).not.toBeInTheDocument();
+  });
+
+  it.each([["Today", "Mochi"], ["Understand", "记下一刻"], ["Timeline", "长期记录"], ["Us", "我们"]])("switches to %s", async (tab, heading) => {
     render(<App />);
     await screen.findByRole("heading", { name: "Mochi" });
     fireEvent.click(screen.getByRole("button", { name: tab }));
     expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
+  });
+
+  it("exposes branded navigation with a single current destination", async () => {
+    render(<App />);
+    await screen.findByRole("heading", { name: "Mochi" });
+    expect(screen.getByText("先看见发生了什么，再慢慢理解彼此。")).toBeInTheDocument();
+    const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+    expect(nav.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Timeline" }));
+    expect(screen.getByRole("button", { name: "Timeline" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("keeps the seven-day rail informational and avoids unsupported pattern navigation", async () => {
+    render(<App />);
+    await screen.findByRole("heading", { name: "Mochi" });
+    expect(screen.getByLabelText("最近七天").querySelectorAll("button")).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: /日常的变化/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps an empty revisit state passive until a concrete episode schedules one", async () => {
+    render(<App />);
+    await screen.findByRole("heading", { name: "Mochi" });
+    expect(await screen.findByText("今天没有需要回看的记录。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "从足迹安排复评" })).not.toBeInTheDocument();
+  });
+
+  it("keeps Us focused on real profile, memory, baseline, and explanatory content", async () => {
+    render(<App />);
+    await screen.findByRole("heading", { name: "Mochi" });
+    fireEvent.click(screen.getByRole("button", { name: "Us" }));
+    const profile = screen.getByRole("button", { name: /查看它的档案/ });
+    fireEvent.click(profile);
+    expect(profile).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(/当前仅支持查看/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /记录原则/ }));
+    expect(profile).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText(/先保留亲眼观察到的事实/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /数据与隐私/ }));
+    expect(screen.getByText(/撤回长期记忆不会改写原始记录/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /关系足迹/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /生活事件/ })).not.toBeInTheDocument();
   });
 
   it("loads timeline with the current pet and separates both lenses", async () => {
@@ -148,7 +241,18 @@ describe("main shell", () => {
     render(<App />);
     await screen.findByRole("heading", { name: "Mochi" });
     fireEvent.click(screen.getByRole("button", { name: "Understand" }));
-    await waitFor(() => expect(screen.getByRole("heading", { name: "它怎么啦？" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "记下一刻" })).toBeInTheDocument());
+  });
+
+  it("marks the selected record step while moving through the long form", async () => {
+    render(<App />);
+    await screen.findByRole("heading", { name: "Mochi" });
+    fireEvent.click(screen.getByRole("button", { name: "Understand" }));
+
+    expect(screen.getByRole("button", { name: "输入" })).toHaveAttribute("aria-current", "step");
+    fireEvent.click(screen.getByRole("button", { name: "安全" }));
+    expect(screen.getByRole("button", { name: "安全" })).toHaveAttribute("aria-current", "step");
+    expect(screen.getByRole("button", { name: "输入" })).not.toHaveAttribute("aria-current");
   });
 
   it("validates the two lenses before saving", async () => {
@@ -162,7 +266,7 @@ describe("main shell", () => {
     expect(fetchMock.mock.calls.some(([input]) => String(input) === "/api/v1/episodes/complete")).toBe(false);
   });
 
-  it("saves a complete manual record and opens Timeline", async () => {
+  it("saves a complete manual record and opens its detail", async () => {
     const fetchMock = mockApi({ pets: [pet] });
     vi.stubGlobal("fetch", fetchMock);
     render(<App />);
@@ -174,7 +278,8 @@ describe("main shell", () => {
     fireEvent.change(screen.getByLabelText("地点"), { target: { value: "客厅" } });
     fireEvent.click(screen.getByRole("button", { name: "保存手工记录" }));
 
-    expect(await screen.findByRole("heading", { name: "长期记录" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "记录详情" })).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([input]) => String(input) === "/api/v1/episodes/11")).toBe(true);
     const call = fetchMock.mock.calls.find(([input]) => String(input) === "/api/v1/episodes/complete");
     const payload = JSON.parse(String(call?.[1]?.body));
     expect(payload.pet_id).toBe(7);
@@ -196,7 +301,7 @@ describe("main shell", () => {
     fireEvent.click(screen.getByLabelText("呼吸困难"));
     fireEvent.click(screen.getByRole("button", { name: "保存手工记录" }));
 
-    await screen.findByRole("heading", { name: "长期记录" });
+    await screen.findByRole("heading", { name: "记录详情" });
     const call = fetchMock.mock.calls.find(([input]) => String(input) === "/api/v1/episodes/complete");
     const payload = JSON.parse(String(call?.[1]?.body));
     expect(payload.safety_check).toMatchObject({ result: "ESCALATE_TO_VET", danger_signals: ["breathing_difficulty"] });
@@ -222,8 +327,34 @@ describe("main shell", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("输入仍保留");
     expect(screen.getByLabelText("原始描述")).toHaveValue("需要保留的草稿");
     fireEvent.click(screen.getByRole("button", { name: "保存手工记录" }));
-    expect(await screen.findByRole("heading", { name: "长期记录" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "记录详情" })).toBeInTheDocument();
     expect(attempts).toBe(2);
+  });
+
+  it("distinguishes an observation-plan load failure from an empty plan list", async () => {
+    const base = mockApi({ pets: [pet] });
+    let planAttempts = 0;
+    let failNextPlanLoad = false;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).startsWith("/api/v1/pets/7/observation-plans")) {
+        planAttempts += 1;
+        if (failNextPlanLoad) { failNextPlanLoad = false; return json({}, false, 503); }
+        return json([]);
+      }
+      return base(input, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+    await screen.findByRole("heading", { name: "Mochi" });
+    await screen.findByText("还没有正在进行的观察。");
+    failNextPlanLoad = true;
+    fireEvent.click(screen.getByRole("button", { name: "Understand" }));
+    fireEvent.change(screen.getByLabelText("原始描述"), { target: { value: "这段输入不能丢" } });
+    expect(await screen.findByRole("alert")).toHaveTextContent("仍可不关联计划并继续记录");
+    fireEvent.click(screen.getByRole("button", { name: "重试计划" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "重试计划" })).not.toBeInTheDocument());
+    expect(screen.getByLabelText("原始描述")).toHaveValue("这段输入不能丢");
+    expect(planAttempts).toBe(3);
   });
 });
 
@@ -265,10 +396,11 @@ async function openManagedTimeline(fetchMock = timelineApi()) {
 describe("timeline management", () => {
   it("sends time and type filters", async () => {
     const fetchMock = await openManagedTimeline();
+    expect(screen.getByRole("option", { name: "饮食变化" })).toHaveValue("feeding_change");
     fireEvent.click(screen.getByRole("button", { name: "7 天" }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("from=") && String(input).includes("to="))).toBe(true));
-    fireEvent.change(screen.getByLabelText("记录类型筛选"), { target: { value: "feeding" } });
-    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("episode_type=feeding"))).toBe(true));
+    fireEvent.change(screen.getByLabelText("记录类型筛选"), { target: { value: "feeding_change" } });
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("episode_type=feeding_change"))).toBe(true));
   });
 
   it("loads full detail and keeps both lenses and safety separate", async () => {
@@ -280,6 +412,7 @@ describe("timeline management", () => {
     expect(screen.getByText("你的理解")).toBeInTheDocument();
     expect(screen.getByText("人工 Safety Check")).toBeInTheDocument();
     expect(screen.getByText("Evidence 来源信息")).toBeInTheDocument();
+    expect(screen.getByText("行为变化")).toBeInTheDocument();
   });
 
   it("validates edits and saves separated fields", async () => {
@@ -413,7 +546,7 @@ describe("follow-up flow", () => {
     await openTodayWith(fetchMock);
     expect(await screen.findByRole("alert")).toHaveTextContent("暂时无法读取待复评项目");
     fireEvent.click(screen.getByRole("button", { name: "重试待复评" }));
-    expect(await screen.findByText("目前没有到期或逾期的复评。")).toBeInTheDocument();
+    expect(await screen.findByText("今天没有需要回看的记录。")).toBeInTheDocument();
   });
 
   it("shows due and overdue items and supports cancel confirmation", async () => {
@@ -502,7 +635,7 @@ describe("observation plan flow", () => {
     await openTodayWith(fetchMock); fireEvent.click(await screen.findByRole("button", { name: "创建观察计划" }));
     fireEvent.change(screen.getByLabelText("观察目标"), { target: { value: "观察门口停留" } }); fireEvent.change(screen.getByLabelText("观察项目"), { target: { value: "记录停留秒数" } }); fireEvent.click(screen.getByRole("button", { name: "保存计划" }));
     expect(await screen.findByText("记录停留秒数")).toBeInTheDocument(); fireEvent.click(screen.getByRole("button", { name: "取消计划" })); expect(screen.getByRole("dialog")).toBeInTheDocument(); fireEvent.click(screen.getByRole("button", { name: "返回" }));
-    fireEvent.click(screen.getByRole("button", { name: "完成计划" })); await screen.findByText("暂无进行中的观察计划。");
+    fireEvent.click(screen.getByRole("button", { name: "完成计划" })); await screen.findByText("还没有正在进行的观察。");
   });
 
   it("offers active plans when saving an observation", async () => {

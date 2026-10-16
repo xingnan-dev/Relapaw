@@ -38,3 +38,5 @@
 - [Lightweight Design System](design-system/README.md)
 - [Phase 3（长期记忆投影与量化 Baseline）](phase-3/README.md)
 - [Evaluation 与 Safety 评估体系](evaluation-safety/README.md)
+- [完整 UI/UX 与品牌精修](ui-ux-brand/README.md)
+- [比赛 AI Coding 独立重点说明](../competition/08_AI_CODING_SUBMISSION_NARRATIVE.md)

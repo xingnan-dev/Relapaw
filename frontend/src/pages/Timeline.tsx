@@ -3,9 +3,27 @@ import { deleteEpisode, getEpisode, getTimeline, scheduleFollowUp, updateEpisode
 import { useCurrentPet } from "../state/CurrentPetContext";
 import { UnderstandingPanel } from "../components/UnderstandingPanel";
 import type { Episode, EpisodeUpdate, TimelineFilters, VeterinaryEscalation } from "../types";
+import { PetBotanicalSketch } from "../components/brand";
 
 type Range = "all" | "30" | "7" | "today";
 const ranges: Array<[Range, string]> = [["all", "全部"], ["30", "30 天"], ["7", "7 天"], ["today", "今天"]];
+const episodeTypeLabels: Record<string, string> = {
+  behavior_change: "行为变化",
+  daily_observation: "日常观察",
+  feeding_change: "饮食变化",
+  rest_change: "休息变化",
+  owner_concern: "主人担忧",
+  moving_home: "搬家",
+  new_person_or_pet: "新成员或访客",
+  environment_change: "环境变化",
+  routine_change: "作息变化",
+  care_event: "医疗或护理事件",
+  follow_up: "复评记录",
+};
+
+function episodeTypeLabel(value: string) {
+  return episodeTypeLabels[value] || "其他记录";
+}
 
 function rangeFilters(range: Range): TimelineFilters {
   if (range === "all") return {};
@@ -23,7 +41,7 @@ function localDateTime(value: string) {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
 
-export function Timeline({ initialEpisodeId = null, onInitialEpisodeOpened = () => undefined }: { initialEpisodeId?: number | null; onInitialEpisodeOpened?: () => void }) {
+export function Timeline({ initialEpisodeId = null, onInitialEpisodeOpened = () => undefined, onOpenMemory = () => undefined }: { initialEpisodeId?: number | null; onInitialEpisodeOpened?: () => void; onOpenMemory?: () => void }) {
   const { pet, status } = useCurrentPet();
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [page, setPage] = useState(1);
@@ -67,7 +85,7 @@ export function Timeline({ initialEpisodeId = null, onInitialEpisodeOpened = () 
     finally { setLoadingMore(false); }
   }
 
-  if (!pet) return <section aria-labelledby="timeline-title"><p className="eyebrow">TIMELINE</p><h2 id="timeline-title">长期记录</h2><p role="status">{status === "loading" ? "正在读取…" : "添加宠物后，Timeline 会出现在这里。"}</p></section>;
+  if (!pet) return <section className="timeline-page" aria-labelledby="timeline-title"><p className="eyebrow">TIMELINE</p><h2 id="timeline-title">长期记录</h2><p role="status">{status === "loading" ? "正在读取…" : "添加宠物后，Timeline 会出现在这里。"}</p></section>;
 
   if (mode !== "list") return <EpisodePanel episode={selected} state={detailState} mode={mode} error={actionError}
     onBack={() => { setMode("list"); setActionError(""); }}
@@ -75,24 +93,24 @@ export function Timeline({ initialEpisodeId = null, onInitialEpisodeOpened = () 
     onEdit={() => setMode("edit")} onDelete={() => setMode("delete")} onSchedule={() => setMode("schedule")} onOpenRelated={(episodeId) => void openDetail(episodeId)}
     onEscalationChanged={(updated) => { setSelected((current) => current ? { ...current, veterinary_escalations: current.veterinary_escalations.map((item) => item.id === updated.id ? updated : item) } : current); }}
     onSaved={(episode) => { setSelected(episode); setEpisodes((items) => items.map((item) => item.id === episode.id ? episode : item)); setMode("detail"); setActionError(""); }}
-    onError={setActionError} onDeleted={() => { setSelected(null); setMode("list"); void load(); }} />;
+    onOpenMemory={onOpenMemory} onError={setActionError} onDeleted={() => { setSelected(null); setMode("list"); void load(); }} />;
 
-  return <section aria-labelledby="timeline-title">
-    <p className="eyebrow">TIMELINE</p><h2 id="timeline-title">长期记录</h2>
-    <label>记录类型筛选<input value={episodeType} onChange={(event) => setEpisodeType(event.target.value)} placeholder="例如：behavior_change" /></label>
-    <div className="filter-chips" aria-label="时间范围">{ranges.map(([value, label]) => <button key={value} className={range === value ? "active" : ""} aria-pressed={range === value} onClick={() => setRange(value)}>{label}</button>)}</div>
+  return <section className="timeline-page" aria-labelledby="timeline-title">
+    <header className="timeline-hero"><div><p className="eyebrow">TIMELINE · 一起走过的日子</p><h2 id="timeline-title">长期记录</h2><p>每一条都保留原话、时间和来源，慢慢连成它真实的生活轨迹。</p><span className="pet-handnote">过几天再回来看看</span></div><PetBotanicalSketch scene="timeline" /><div className="timeline-count"><strong>{episodes.length}</strong><span>条记录</span></div></header>
+    <div className="timeline-filters"><label>记录类型筛选<select value={episodeType} onChange={(event) => setEpisodeType(event.target.value)}><option value="">全部类型</option>{Object.entries(episodeTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <div className="filter-chips" aria-label="时间范围">{ranges.map(([value, label]) => <button key={value} className={range === value ? "active" : ""} aria-pressed={range === value} onClick={() => setRange(value)}>{label}</button>)}</div></div>
     {listState === "loading" && <p role="status">正在读取…</p>}
     {listState === "error" && <div role="alert"><p>暂时无法读取 Timeline。</p><button onClick={() => void load()}>重试</button></div>}
     {listState === "ready" && episodes.length === 0 && <p role="status">当前筛选下还没有事件记录。</p>}
     {actionError && <p role="alert" className="form-error">{actionError}</p>}
-    <ol className="timeline">{episodes.map((episode) => <li key={episode.id}><button className="timeline-summary" onClick={() => void openDetail(episode.id)}><span><time dateTime={episode.happened_at}>{new Date(episode.happened_at).toLocaleString()}</time><strong>{episode.episode_type}</strong></span><span>查看详情</span></button><p>{episode.raw_owner_input}</p></li>)}</ol>
+    <ol className="timeline">{episodes.map((episode) => <li key={episode.id}><button className="timeline-summary" onClick={() => void openDetail(episode.id)}><span><time dateTime={episode.happened_at}>{new Date(episode.happened_at).toLocaleString()}</time><strong>{episodeTypeLabel(episode.episode_type)}</strong><span className="sr-only">{episode.episode_type}</span></span><span>打开记录 <span aria-hidden="true">→</span></span></button><p>{episode.raw_owner_input}</p></li>)}</ol>
     {hasMore && <button disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? "正在加载…" : "加载更多"}</button>}
   </section>;
 }
 
-type PanelProps = { episode: Episode | null; state: "idle" | "loading" | "error"; mode: "detail" | "edit" | "delete" | "schedule"; error: string; onBack: () => void; onRetry: () => void; onEdit: () => void; onDelete: () => void; onSchedule: () => void; onOpenRelated: (episodeId: number) => void; onSaved: (episode: Episode) => void; onDeleted: () => void; onError: (value: string) => void; onEscalationChanged: (updated: VeterinaryEscalation) => void };
+type PanelProps = { episode: Episode | null; state: "idle" | "loading" | "error"; mode: "detail" | "edit" | "delete" | "schedule"; error: string; onBack: () => void; onRetry: () => void; onEdit: () => void; onDelete: () => void; onSchedule: () => void; onOpenRelated: (episodeId: number) => void; onOpenMemory: () => void; onSaved: (episode: Episode) => void; onDeleted: () => void; onError: (value: string) => void; onEscalationChanged: (updated: VeterinaryEscalation) => void };
 
-function EpisodePanel({ episode, state, mode, error, onBack, onRetry, onEdit, onDelete, onSchedule, onOpenRelated, onSaved, onDeleted, onError, onEscalationChanged }: PanelProps) {
+function EpisodePanel({ episode, state, mode, error, onBack, onRetry, onEdit, onDelete, onSchedule, onOpenRelated, onOpenMemory, onSaved, onDeleted, onError, onEscalationChanged }: PanelProps) {
   if (state === "loading") return <section><button onClick={onBack}>返回 Timeline</button><p role="status">正在读取详情…</p></section>;
   if (state === "error" || !episode) return <section><button onClick={onBack}>返回 Timeline</button><div role="alert"><p>暂时无法读取记录详情。</p><button onClick={onRetry}>重试</button></div></section>;
   if (mode === "edit") return <EpisodeEdit episode={episode} error={error} onCancel={() => onSaved(episode)} onSaved={onSaved} onError={onError} />;
@@ -104,10 +122,10 @@ function EpisodePanel({ episode, state, mode, error, onBack, onRetry, onEdit, on
     <Detail title="原始输入"><p>{episode.raw_owner_input}</p></Detail>
     <Detail title="发生了什么"><small>Observation</small>{episode.observations.map((item) => <p key={item.id}>{item.description}</p>)}</Detail>
     <Detail title="你的理解"><small>Owner Interpretation</small>{episode.owner_interpretations.length ? episode.owner_interpretations.map((item) => <p key={item.id}>{item.interpretation}</p>) : <p>未填写主人解释</p>}</Detail>
-    <Detail title="结构化背景"><dl><dt>发生时间</dt><dd>{new Date(episode.happened_at).toLocaleString()}</dd><dt>更新时间</dt><dd>{new Date(episode.updated_at).toLocaleString()}</dd><dt>类型</dt><dd>{episode.episode_type}</dd><dt>地点</dt><dd>{episode.location || "未填写"}</dd><dt>触发背景</dt><dd>{episode.trigger_context || "未填写"}</dd><dt>Context</dt><dd>{episode.context ? JSON.stringify(episode.context) : "未填写"}</dd></dl></Detail>
+    <Detail title="结构化背景"><dl><dt>发生时间</dt><dd>{new Date(episode.happened_at).toLocaleString()}</dd><dt>更新时间</dt><dd>{new Date(episode.updated_at).toLocaleString()}</dd><dt>类型</dt><dd>{episodeTypeLabel(episode.episode_type)}</dd><dt>地点</dt><dd>{episode.location || "未填写"}</dd><dt>触发背景</dt><dd>{episode.trigger_context || "未填写"}</dd><dt>Context</dt><dd>{episode.context ? JSON.stringify(episode.context) : "未填写"}</dd></dl></Detail>
     <Detail title="人工 Safety Check"><p>{episode.safety_check?.result || "未进行"}</p>{episode.safety_check?.danger_signals.map((signal) => <p key={signal}>{signal}</p>)}</Detail>
     {episode.veterinary_escalations?.length > 0 && <VeterinaryEscalationPanel episode={episode} onChanged={onEscalationChanged} />}
-    <UnderstandingPanel episode={episode} />
+    <UnderstandingPanel episode={episode} onOpenMemory={onOpenMemory} />
     <Detail title="Evidence 来源信息">{episode.evidence_references?.length ? episode.evidence_references.map((item) => <p key={item.id}>{item.source_type} · {item.field_path} · {new Date(item.observed_at).toLocaleString()}</p>) : <p>暂无来源记录</p>}</Detail>
     <Detail title="Observation Plan">{episode.plan_links?.length ? episode.plan_links.map((item) => <p key={item.id}>关联计划 #{item.plan_id}</p>) : <p>未关联观察计划</p>}</Detail>
     <Detail title="复评关系">{episode.result_of_follow_up && <p><button onClick={() => onOpenRelated(episode.result_of_follow_up!.source_episode_id)}>查看原记录</button></p>}{episode.scheduled_follow_ups?.length ? episode.scheduled_follow_ups.map((item) => <p key={item.id}>{new Date(item.scheduled_at).toLocaleString()} · {item.status}{item.result_episode_id && <button onClick={() => onOpenRelated(item.result_episode_id!)}>查看复评记录</button>}</p>) : <p>尚未安排复评</p>}</Detail>
@@ -167,7 +185,7 @@ function EpisodeEdit({ episode, error, onCancel, onSaved, onError }: { episode: 
     const payload: EpisodeUpdate = { happened_at: new Date(happened).toISOString(), episode_type: episodeType.trim(), raw_owner_input: raw.trim(), context: parsedContext, duration_seconds: numberOrNull(duration), frequency_count: numberOrNull(frequency), intensity: numberOrNull(intensity), location: location.trim() || null, trigger_context: trigger.trim() || null, observations: observations.map(({ behavior_type, description, source_type, confidence, measured_value, unit }) => ({ behavior_type, description: description.trim(), source_type, confidence, measured_value, unit })), owner_interpretations: interpretations.filter((item) => item.trim()).map((interpretation) => ({ interpretation: interpretation.trim() })) };
     setSubmitting(true); try { onSaved(await updateEpisode(episode.id, payload)); } catch { onError("保存失败，输入仍保留。请检查网络后重试。"); } finally { setSubmitting(false); }
   }
-  return <section><h2>编辑记录</h2><p className="notice">人工 Safety Check 与 Veterinary Escalation 是历史记录，本页不会修改它们。</p><form onSubmit={(event) => void submit(event)}>
+  return <section><h2>编辑记录</h2><p className="notice">人工 Safety Check 与 Veterinary Escalation 是历史记录，本页不会修改它们。</p><form className="editor-form" onSubmit={(event) => void submit(event)}>
     <label>发生时间<input aria-label="发生时间" type="datetime-local" value={happened} onChange={(event) => setHappened(event.target.value)} /></label><label>记录类型<input aria-label="记录类型" value={episodeType} onChange={(event) => setEpisodeType(event.target.value)} /></label>
     <label>原始输入<textarea aria-label="原始输入" value={raw} onChange={(event) => setRaw(event.target.value)} /></label>
     <fieldset className="form-section"><legend>Observation</legend>{observations.map((item, index) => <div key={item.id || index}><label>Observation {index + 1}<textarea aria-label={index === 0 ? "Observation" : `Observation ${index + 1}`} value={item.description} onChange={(event) => setObservations((current) => current.map((value, itemIndex) => itemIndex === index ? { ...value, description: event.target.value } : value))} /></label>{observations.length > 1 && <button type="button" onClick={() => setObservations((current) => current.filter((_, itemIndex) => itemIndex !== index))}>删除 Observation {index + 1}</button>}</div>)}<button type="button" onClick={() => setObservations((current) => [...current, { id: 0, episode_id: episode.id, behavior_type: "manual_observation", description: "", source_type: "owner_direct", confidence: null, measured_value: null, unit: null, created_at: "", updated_at: "" }])}>添加 Observation</button></fieldset>

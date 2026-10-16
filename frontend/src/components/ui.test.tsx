@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { Button, StatusNotice, Surface } from "./ui";
+import { Badge, Button, SectionHeader, StatusNotice, Surface } from "./ui";
 
 describe("design system primitives", () => {
   it("keeps Button native semantics and exposes busy state", () => {
@@ -28,5 +28,17 @@ describe("design system primitives", () => {
   it("provides a composable semantic surface", () => {
     render(<Surface tone="subtle" aria-label="输入预览">内容</Surface>);
     expect(screen.getByLabelText("输入预览")).toHaveClass("ui-surface--subtle");
+  });
+
+  it("exposes badge meaning as text", () => {
+    render(<Badge tone="warning">待确认</Badge>);
+    expect(screen.getByText("待确认")).toHaveClass("ui-badge--warning");
+  });
+
+  it("provides a page-level heading without hiding its description", () => {
+    render(<SectionHeader eyebrow="TODAY" title="今天" description="从真实记录开始。" action={<Button>添加</Button>} />);
+    expect(screen.getByRole("heading", { name: "今天" })).toBeInTheDocument();
+    expect(screen.getByText("从真实记录开始。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加" })).toBeInTheDocument();
   });
 });
