@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Onboarding } from "./components/Onboarding";
 import { PetSetup } from "./components/PetSetup";
 import { Splash } from "./components/Splash";
@@ -9,6 +9,7 @@ import { Today } from "./pages/Today";
 import { Understand } from "./pages/Understand";
 import { Us } from "./pages/Us";
 import { BrandAtmosphere, BrandMark, NavIcon, type NavIconName } from "./components/brand";
+import { useCapabilities } from "./state/CapabilitiesContext";
 
 const tabs = ["Today", "Understand", "Timeline", "Us"] as const;
 type Tab = (typeof tabs)[number];
@@ -36,13 +37,20 @@ function AppFlow() {
 }
 
 function MainShell({ onAddPet }: { onAddPet: () => void }) {
+  const { capabilities } = useCapabilities();
   const [active, setActive] = useState<Tab>("Today");
+  const pageRef = useRef<HTMLElement>(null);
   const [showDailyOpening, setShowDailyOpening] = useState(() => {
     try { return localStorage.getItem("relapaw:daily-opening") !== new Date().toLocaleDateString("en-CA"); }
     catch { return false; }
   });
   const [targetEpisodeId, setTargetEpisodeId] = useState<number | null>(null);
   const [targetUsMemory, setTargetUsMemory] = useState(false);
+  useLayoutEffect(() => {
+    const page = pageRef.current;
+    if (page && typeof page.scrollTo === "function") page.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    else if (page) page.scrollTop = 0;
+  }, [active]);
   const openEpisode = (episodeId: number) => { setTargetEpisodeId(episodeId); setActive("Timeline"); };
   const openMemory = () => { setTargetUsMemory(true); setActive("Us"); };
   const pages = {
@@ -63,7 +71,8 @@ function MainShell({ onAddPet }: { onAddPet: () => void }) {
         <div className="brand-lockup"><BrandMark/><div><h1>Relapaw</h1><p>Beyond the Paw. The Bond.</p></div></div>
         <p className="brand-promise">先看见发生了什么，再慢慢理解彼此。</p>
       </header>
-      <main className="page-transition" key={active}>{pages[active]}</main>
+      {capabilities.synthetic_data && <p className="demo-data-banner" role="status">合成演示数据 · {capabilities.dataset_version ?? "数据集待验证"}</p>}
+      <main ref={pageRef} className="page-transition" key={active}>{pages[active]}</main>
       <nav className="bottom-nav" aria-label="Primary navigation">
         <p className="nav-label">RELAPAW</p>
         {tabs.map((tab) => <button key={tab} type="button" data-nav={tab.toLowerCase()} aria-label={tab} aria-current={active === tab ? "page" : undefined} onClick={() => setActive(tab)}>

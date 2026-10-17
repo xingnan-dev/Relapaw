@@ -1,11 +1,17 @@
+from pathlib import Path
+from typing import Literal
+
 from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     app_name: str = "Relapaw API"
+    environment: Literal["development", "test", "demo"] = Field(default="development", validation_alias="RELAPAW_ENV")
     database_url: str = "sqlite:///./relapaw.db"
     cors_origins: list[str] = ["http://localhost:5173"]
+    ai_enabled: bool = Field(default=False, validation_alias="RELAPAW_AI_ENABLED")
+    static_dir: Path | None = Field(default=None, validation_alias="RELAPAW_STATIC_DIR")
     openai_api_key: SecretStr | None = Field(
         default=None,
         validation_alias=AliasChoices("OPENAI_API_KEY", "RELAPAW_OPENAI_API_KEY"),

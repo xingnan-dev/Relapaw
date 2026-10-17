@@ -4,7 +4,9 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import require_episode
 from app.api.errors import APIError
+from app.api.routes.capabilities import get_ai_enabled
 from app.db.session import get_db
+from app.domain.enums import SafetyStatus
 from app.schemas.analysis import AnalysisRunCreate, AnalysisRunRead, ConfirmationCreate, ConfirmationRead
 from app.services.understanding import (
     AnalysisExecutionError,
@@ -24,7 +26,12 @@ def create_analysis_run(
     payload: AnalysisRunCreate,
     db: Session = Depends(get_db),
     adapter: TextUnderstandingAdapter = Depends(get_text_understanding_adapter),
+    ai_enabled: bool = Depends(get_ai_enabled),
 ):
+    episode = require_episode(db, episode_id)
+    safety_result = episode.safety_check.result if episode.safety_check is not None else None
+    if safety_result == SafetyStatus.NORMAL and not ai_enabled:
+        raise APIError(403, "FEATURE_DISABLED", "Text Understanding is disabled for this release")
     try:
         run = execute_analysis(db, episode_id, payload, adapter)
         db.commit()

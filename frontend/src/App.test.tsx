@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import { CapabilitiesProvider } from "./state/CapabilitiesContext";
 
 const pet = { id: 7, name: "Mochi", species: "cat", breed: null, birth_date: null, approximate_age: null, sex: null, neutered: null, created_at: "2026-01-01T00:00:00Z" };
 
@@ -8,10 +9,11 @@ function json(data: unknown, ok = true, status = ok ? 200 : 500) {
   return Promise.resolve({ ok, status, json: () => Promise.resolve(data) });
 }
 
-function mockApi(options: { pets?: typeof pet[]; storedPetValid?: boolean; storedPetUnavailable?: boolean; timeline?: unknown; completeError?: boolean } = {}) {
+function mockApi(options: { pets?: typeof pet[]; storedPetValid?: boolean; storedPetUnavailable?: boolean; timeline?: unknown; completeError?: boolean; capabilities?: unknown } = {}) {
   const pets = options.pets ?? [];
   return vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    if (url === "/api/v1/capabilities") return json(options.capabilities ?? { environment: "development", synthetic_data: false, dataset_version: null, ai_analysis_enabled: false, model_qualification: "NOT_QUALIFIED" });
     if (url === "/api/v1/pets" && init?.method === "POST") return json(pet);
     if (url === "/api/v1/episodes/complete" && init?.method === "POST") return options.completeError ? json({ error: { code: "INTERNAL_ERROR", message: "Failed" } }, false, 500) : json({ id: 11 }, true, 201);
     if (url === "/api/v1/pets") return json(pets);
@@ -175,6 +177,16 @@ describe("main shell", () => {
     render(<App />);
     await screen.findByRole("heading", { name: "Mochi" });
     expect(screen.queryByRole("region", { name: /今天，也好好看见它/ })).not.toBeInTheDocument();
+  });
+
+  it("labels a verified synthetic demo dataset", async () => {
+    vi.stubGlobal("fetch", mockApi({
+      pets: [pet],
+      capabilities: { environment: "demo", synthetic_data: true, dataset_version: "relapaw-demo/v1-observe-review-baseline", ai_analysis_enabled: false, model_qualification: "NOT_QUALIFIED" },
+    }));
+    render(<CapabilitiesProvider><App /></CapabilitiesProvider>);
+
+    expect(await screen.findByText("合成演示数据 · relapaw-demo/v1-observe-review-baseline")).toBeInTheDocument();
   });
 
   it.each([["Today", "Mochi"], ["Understand", "记下一刻"], ["Timeline", "长期记录"], ["Us", "我们"]])("switches to %s", async (tab, heading) => {

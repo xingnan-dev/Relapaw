@@ -6,6 +6,8 @@ backend/relapaw.db
 backend/phase01_migration_test.db
 backend/*_verify*.db
 backend/.coverage
+backend/.demo/
+backend/.pytest-demo-tmp/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/

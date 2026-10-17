@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -42,3 +42,20 @@ def pet(client):
     response = client.post("/api/v1/pets", json={"name": "Mochi", "species": "cat"})
     assert response.status_code == 201
     return response.json()
+
+
+@pytest.fixture
+def demo_db(tmp_path):
+    database_path = tmp_path / "relapaw-demo.db"
+    demo_engine = create_engine(f"sqlite:///{database_path}")
+
+    @event.listens_for(demo_engine, "connect")
+    def enable_demo_foreign_keys(dbapi_connection, _connection_record):
+        dbapi_connection.execute("PRAGMA foreign_keys=ON")
+
+    Base.metadata.create_all(demo_engine)
+    with demo_engine.begin() as connection:
+        connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
+        connection.execute(text("INSERT INTO alembic_version VALUES ('20261012_0008')"))
+    yield sessionmaker(bind=demo_engine, expire_on_commit=False), tmp_path / "manifest.json"
+    demo_engine.dispose()

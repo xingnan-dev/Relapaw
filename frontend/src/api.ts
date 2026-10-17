@@ -1,4 +1,4 @@
-import type { AnalysisRun, BaselineSnapshot, BaselineWindow, CompleteEpisodeCreate, ConfirmationDecision, Episode, EpisodeUpdate, FollowUp, FollowUpComplete, MemoryCandidate, MemoryDecisionType, ObservationPlan, ObservationPlanStatus, Pet, PetBaseline, PetCreate, TimelineFilters, TimelinePage, UserConfirmation, VeterinaryEscalation, VeterinaryEscalationStatus } from "./types";
+import type { AnalysisRun, BaselineSnapshot, BaselineWindow, Capabilities, CompleteEpisodeCreate, ConfirmationDecision, Episode, EpisodeUpdate, FollowUp, FollowUpComplete, MemoryCandidate, MemoryDecisionType, ObservationPlan, ObservationPlanStatus, Pet, PetBaseline, PetCreate, TimelineFilters, TimelinePage, UserConfirmation, VeterinaryEscalation, VeterinaryEscalationStatus } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -28,6 +28,10 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 export function listPets(): Promise<Pet[]> {
   return request("/api/v1/pets");
+}
+
+export function getCapabilities(): Promise<Capabilities> {
+  return request("/api/v1/capabilities");
 }
 
 export function getPet(petId: number): Promise<Pet> {

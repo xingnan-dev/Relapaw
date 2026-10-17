@@ -28,7 +28,7 @@ const stateCopy: Record<Exclude<RequestState, "idle" | "loading" | "completed">,
   "provider-unavailable": "模型服务暂时不可用或拒绝了本次请求。没有保存部分分析结果，请稍后重试。",
 };
 
-export function UnderstandingPanel({ episode, onOpenMemory = () => undefined }: { episode: Episode; onOpenMemory?: () => void }) {
+export function UnderstandingPanel({ episode, aiAnalysisEnabled, onOpenMemory = () => undefined }: { episode: Episode; aiAnalysisEnabled: boolean; onOpenMemory?: () => void }) {
   const [runs, setRuns] = useState<AnalysisRun[]>([]);
   const [historyState, setHistoryState] = useState<"loading" | "ready" | "error">("loading");
   const [requestState, setRequestState] = useState<RequestState>("idle");
@@ -103,7 +103,8 @@ export function UnderstandingPanel({ episode, onOpenMemory = () => undefined }: 
       <Detail label="Observation">{episode.observations.length ? episode.observations.map((item) => <p key={item.id}>{item.description}</p>) : <p>无</p>}</Detail>
       <Detail label="Owner Interpretation">{episode.owner_interpretations.length ? episode.owner_interpretations.map((item) => <p key={item.id}>{item.interpretation}</p>) : <p>未填写</p>}</Detail>
     </div>
-    <Button variant="primary" className="primary" busy={requestState === "loading"} disabled={blocked} onClick={() => void analyze()}>{requestState === "loading" ? "正在分析…" : "开始文本分析"}</Button>
+    {!blocked && aiAnalysisEnabled && <Button variant="primary" className="primary" busy={requestState === "loading"} onClick={() => void analyze()}>{requestState === "loading" ? "正在分析…" : "开始文本分析"}</Button>}
+    {!blocked && !aiAnalysisEnabled && <StatusNotice tone="info" title="当前演示版本未启用运行时 AI">可以查看已有的录制评估结果，但不能创建新的 AnalysisRun。当前模型组合为 NOT_QUALIFIED。</StatusNotice>}
     {blocked && <StatusNotice tone="danger" role="status" title="Safety blocked">{stateCopy["safety-blocked"]}</StatusNotice>}
     {requestState !== "idle" && requestState !== "loading" && requestState !== "completed" && !blocked && <StatusNotice tone="warning" role="alert" action={<Button onClick={() => void analyze()}>重试分析</Button>}>{stateCopy[requestState]}</StatusNotice>}
     {requestState === "completed" && <StatusNotice tone="success" role="status">分析完成。请逐条确认或拒绝；确认前均不是事实。</StatusNotice>}
@@ -113,7 +114,7 @@ export function UnderstandingPanel({ episode, onOpenMemory = () => undefined }: 
       {historyState === "ready" && runs.length === 0 && <p>尚无 AnalysisRun。</p>}
       {runs.length > 0 && <div className="analysis-history">{runs.map((run) => <button key={run.id} aria-pressed={run.id === activeRunId} onClick={() => setActiveRunId(run.id)}>#{run.id} · {run.status}{run.is_stale ? " · stale" : ""}<small>{new Date(run.created_at).toLocaleString()} · {run.error_code || "无错误"}</small></button>)}</div>}
     </section>
-    {activeRun && <AnalysisRunView run={activeRun} onOpenMemory={onOpenMemory} onDecision={(claimId, decision, confirmationId, createdAt) => updateClaim(activeRun.id, claimId, decision, confirmationId, createdAt)} />}
+    {activeRun && <AnalysisRunView run={activeRun} readOnly={!aiAnalysisEnabled} onOpenMemory={onOpenMemory} onDecision={(claimId, decision, confirmationId, createdAt) => updateClaim(activeRun.id, claimId, decision, confirmationId, createdAt)} />}
   </section>;
 }
 
@@ -121,18 +122,18 @@ function Detail({ label, children }: { label: string; children: React.ReactNode 
   return <section><strong>{label}</strong>{children}</section>;
 }
 
-function AnalysisRunView({ run, onDecision, onOpenMemory }: { run: AnalysisRun; onDecision: (claimId: number, decision: ConfirmationDecision, confirmationId: number, createdAt: string) => void; onOpenMemory: () => void }) {
+function AnalysisRunView({ run, readOnly, onDecision, onOpenMemory }: { run: AnalysisRun; readOnly: boolean; onDecision: (claimId: number, decision: ConfirmationDecision, confirmationId: number, createdAt: string) => void; onOpenMemory: () => void }) {
   return <article className="analysis-run" aria-label={`AnalysisRun ${run.id}`}>
     <header><h4>AnalysisRun #{run.id}</h4>{run.is_stale && <strong className="stale-badge">stale · 输入快照已过期</strong>}</header>
     <p><strong>状态：</strong>{run.status}{run.error_code ? ` · ${run.error_code}` : ""}</p>
     <dl className="contract-meta"><dt>模型</dt><dd>{run.model_provider} / {run.model_name} / {run.model_version}</dd><dt>Adapter</dt><dd>{run.adapter_name}</dd><dt>Prompt 契约</dt><dd>{run.prompt_contract_version}</dd><dt>输入契约</dt><dd>{run.input_contract_version}</dd><dt>输出契约</dt><dd>{run.output_contract_version}</dd></dl>
     {run.status === "BLOCKED_BY_SAFETY" && <StatusNotice tone="danger" title="Safety blocked">没有调用模型，也没有生成 Claim。</StatusNotice>}
     {run.status === "FAILED" && <StatusNotice tone="warning">此运行失败，没有可确认的模型结果。</StatusNotice>}
-    {run.claims.map((claim) => <ClaimView key={claim.id} claim={claim} runStale={run.is_stale} onDecision={onDecision} onOpenMemory={onOpenMemory} />)}
+    {run.claims.map((claim) => <ClaimView key={claim.id} claim={claim} runStale={run.is_stale} readOnly={readOnly} onDecision={onDecision} onOpenMemory={onOpenMemory} />)}
   </article>;
 }
 
-function ClaimView({ claim, runStale, onDecision, onOpenMemory }: { claim: AnalysisClaim; runStale: boolean; onDecision: (claimId: number, decision: ConfirmationDecision, confirmationId: number, createdAt: string) => void; onOpenMemory: () => void }) {
+function ClaimView({ claim, runStale, readOnly, onDecision, onOpenMemory }: { claim: AnalysisClaim; runStale: boolean; readOnly: boolean; onDecision: (claimId: number, decision: ConfirmationDecision, confirmationId: number, createdAt: string) => void; onOpenMemory: () => void }) {
   const [pending, setPending] = useState<ConfirmationDecision | null>(null);
   const [error, setError] = useState("");
   const [candidateState, setCandidateState] = useState<"idle" | "saving" | "created">("idle");
@@ -161,8 +162,9 @@ function ClaimView({ claim, runStale, onDecision, onOpenMemory }: { claim: Analy
     <h5>Claim</h5><p>{claim.statement}</p><p><strong>类型：</strong>{claim.claim_type} · <strong>置信度：</strong>{claim.confidence_label} · <strong>状态：</strong>{claim.status}</p>
     <h5>Evidence</h5>{claim.evidence_references.map((item) => <blockquote key={item.id}><strong>{item.role}</strong> · {item.source_type} / {item.field_path}<br />{item.excerpt || "无摘录"}</blockquote>)}
     <h5>Uncertainty</h5>{claim.uncertainties.map((item) => <p key={item.id}><strong>{item.kind}</strong>：{item.description}</p>)}
-    {claim.status === "PROPOSED" ? <div className="claim-actions"><Button busy={pending === "CONFIRMED"} disabled={pending !== null} onClick={() => void decide("CONFIRMED")}>{pending === "CONFIRMED" ? "正在确认…" : "确认此 Claim"}</Button><Button variant="danger" busy={pending === "REJECTED"} disabled={pending !== null} onClick={() => void decide("REJECTED")}>{pending === "REJECTED" ? "正在拒绝…" : "拒绝此 Claim"}</Button></div> : <p className="decision-state">用户已{claim.status === "CONFIRMED" ? "确认" : "拒绝"}；这是用户决定，不会改写原始记录。</p>}
-    {claim.status === "CONFIRMED" && !runStale && candidateState !== "created" && <Button busy={candidateState === "saving"} onClick={() => void materializeCandidate()}>{candidateState === "saving" ? "正在建立候选…" : "建立长期记忆候选"}</Button>}
+    {readOnly && <StatusNotice tone="info">当前演示只读展示历史模型结果，不接受新的 Claim 决定或长期记忆候选。</StatusNotice>}
+    {!readOnly && (claim.status === "PROPOSED" ? <div className="claim-actions"><Button busy={pending === "CONFIRMED"} disabled={pending !== null} onClick={() => void decide("CONFIRMED")}>{pending === "CONFIRMED" ? "正在确认…" : "确认此 Claim"}</Button><Button variant="danger" busy={pending === "REJECTED"} disabled={pending !== null} onClick={() => void decide("REJECTED")}>{pending === "REJECTED" ? "正在拒绝…" : "拒绝此 Claim"}</Button></div> : <p className="decision-state">用户已{claim.status === "CONFIRMED" ? "确认" : "拒绝"}；这是用户决定，不会改写原始记录。</p>)}
+    {!readOnly && claim.status === "CONFIRMED" && !runStale && candidateState !== "created" && <Button busy={candidateState === "saving"} onClick={() => void materializeCandidate()}>{candidateState === "saving" ? "正在建立候选…" : "建立长期记忆候选"}</Button>}
     {claim.status === "CONFIRMED" && runStale && <StatusNotice tone="warning">分析输入已 stale，不能建立新的长期记忆候选。</StatusNotice>}
     {candidateState === "created" && <StatusNotice tone="success" role="status" action={<Button onClick={onOpenMemory}>去我们页面确认</Button>}>候选已建立，尚未纳入长期记忆。</StatusNotice>}
     {candidateError && <StatusNotice tone="danger" role="alert">{candidateError}</StatusNotice>}

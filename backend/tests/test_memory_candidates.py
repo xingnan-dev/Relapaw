@@ -1,6 +1,7 @@
 import pytest
 
 import app.services.memory as memory_service
+from app.api.routes.capabilities import get_ai_enabled
 from app.main import app
 from app.schemas.analysis import AdapterDescriptor
 from app.services.understanding_adapter import get_text_understanding_adapter
@@ -52,6 +53,7 @@ def create_confirmed_claim(client, pet_id: int):
         },
     }).json()
     app.dependency_overrides[get_text_understanding_adapter] = lambda: MemoryFakeAdapter()
+    app.dependency_overrides[get_ai_enabled] = lambda: True
     run = client.post(
         f"/api/v1/episodes/{episode['id']}/analysis-runs", json={"request_id": "memory-run"}
     ).json()

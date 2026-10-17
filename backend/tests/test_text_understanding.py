@@ -2,6 +2,7 @@ import pytest
 
 import app.services.understanding as understanding_service
 from app.main import app
+from app.api.routes.capabilities import get_ai_enabled
 from app.schemas.analysis import AdapterDescriptor
 from app.services.understanding_adapter import AdapterError, DisabledAdapter, get_text_understanding_adapter
 
@@ -72,6 +73,7 @@ def create_episode(client, pet_id: int, *, safety_result="NORMAL") -> dict:
 
 def use_adapter(adapter):
     app.dependency_overrides[get_text_understanding_adapter] = lambda: adapter
+    app.dependency_overrides[get_ai_enabled] = lambda: True
 
 
 def test_analysis_preserves_input_lenses_and_persists_traceability(client, pet):

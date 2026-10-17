@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNo
 import { deleteEpisode, getEpisode, getTimeline, scheduleFollowUp, updateEpisode, updateVeterinaryEscalation } from "../api";
 import { useCurrentPet } from "../state/CurrentPetContext";
 import { UnderstandingPanel } from "../components/UnderstandingPanel";
+import { useCapabilities } from "../state/CapabilitiesContext";
 import type { Episode, EpisodeUpdate, TimelineFilters, VeterinaryEscalation } from "../types";
 import { PetBotanicalSketch } from "../components/brand";
 
@@ -42,6 +43,7 @@ function localDateTime(value: string) {
 }
 
 export function Timeline({ initialEpisodeId = null, onInitialEpisodeOpened = () => undefined, onOpenMemory = () => undefined }: { initialEpisodeId?: number | null; onInitialEpisodeOpened?: () => void; onOpenMemory?: () => void }) {
+  const { capabilities } = useCapabilities();
   const { pet, status } = useCurrentPet();
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [page, setPage] = useState(1);
@@ -88,6 +90,7 @@ export function Timeline({ initialEpisodeId = null, onInitialEpisodeOpened = () 
   if (!pet) return <section className="timeline-page" aria-labelledby="timeline-title"><p className="eyebrow">TIMELINE</p><h2 id="timeline-title">长期记录</h2><p role="status">{status === "loading" ? "正在读取…" : "添加宠物后，Timeline 会出现在这里。"}</p></section>;
 
   if (mode !== "list") return <EpisodePanel episode={selected} state={detailState} mode={mode} error={actionError}
+    aiAnalysisEnabled={capabilities.ai_analysis_enabled}
     onBack={() => { setMode("list"); setActionError(""); }}
     onRetry={() => selected ? void openDetail(selected.id) : undefined}
     onEdit={() => setMode("edit")} onDelete={() => setMode("delete")} onSchedule={() => setMode("schedule")} onOpenRelated={(episodeId) => void openDetail(episodeId)}
@@ -108,24 +111,24 @@ export function Timeline({ initialEpisodeId = null, onInitialEpisodeOpened = () 
   </section>;
 }
 
-type PanelProps = { episode: Episode | null; state: "idle" | "loading" | "error"; mode: "detail" | "edit" | "delete" | "schedule"; error: string; onBack: () => void; onRetry: () => void; onEdit: () => void; onDelete: () => void; onSchedule: () => void; onOpenRelated: (episodeId: number) => void; onOpenMemory: () => void; onSaved: (episode: Episode) => void; onDeleted: () => void; onError: (value: string) => void; onEscalationChanged: (updated: VeterinaryEscalation) => void };
+type PanelProps = { episode: Episode | null; state: "idle" | "loading" | "error"; mode: "detail" | "edit" | "delete" | "schedule"; error: string; aiAnalysisEnabled: boolean; onBack: () => void; onRetry: () => void; onEdit: () => void; onDelete: () => void; onSchedule: () => void; onOpenRelated: (episodeId: number) => void; onOpenMemory: () => void; onSaved: (episode: Episode) => void; onDeleted: () => void; onError: (value: string) => void; onEscalationChanged: (updated: VeterinaryEscalation) => void };
 
-function EpisodePanel({ episode, state, mode, error, onBack, onRetry, onEdit, onDelete, onSchedule, onOpenRelated, onOpenMemory, onSaved, onDeleted, onError, onEscalationChanged }: PanelProps) {
-  if (state === "loading") return <section><button onClick={onBack}>返回 Timeline</button><p role="status">正在读取详情…</p></section>;
-  if (state === "error" || !episode) return <section><button onClick={onBack}>返回 Timeline</button><div role="alert"><p>暂时无法读取记录详情。</p><button onClick={onRetry}>重试</button></div></section>;
+function EpisodePanel({ episode, state, mode, error, aiAnalysisEnabled, onBack, onRetry, onEdit, onDelete, onSchedule, onOpenRelated, onOpenMemory, onSaved, onDeleted, onError, onEscalationChanged }: PanelProps) {
+  if (state === "loading") return <section><button className="episode-panel__back" onClick={onBack}>返回 Timeline</button><p role="status">正在读取详情…</p></section>;
+  if (state === "error" || !episode) return <section><button className="episode-panel__back" onClick={onBack}>返回 Timeline</button><div role="alert"><p>暂时无法读取记录详情。</p><button onClick={onRetry}>重试</button></div></section>;
   if (mode === "edit") return <EpisodeEdit episode={episode} error={error} onCancel={() => onSaved(episode)} onSaved={onSaved} onError={onError} />;
   if (mode === "delete") return <DeleteConfirm episode={episode} error={error} onCancel={() => onSaved(episode)} onDeleted={onDeleted} onError={onError} />;
   if (mode === "schedule") return <ScheduleFollowUp episode={episode} onCancel={() => onSaved(episode)} onScheduled={async () => onSaved(await getEpisode(episode.id))} />;
   const hasFollowUpHistory = Boolean(episode.result_of_follow_up || episode.scheduled_follow_ups?.length);
   return <section className="episode-panel" aria-labelledby="episode-detail-title">
-    <button onClick={onBack}>返回 Timeline</button><p className="eyebrow">EPISODE DETAIL</p><h2 id="episode-detail-title">记录详情</h2>
+    <button className="episode-panel__back" onClick={onBack}>返回 Timeline</button><p className="eyebrow">EPISODE DETAIL</p><h2 id="episode-detail-title">记录详情</h2>
     <Detail title="原始输入"><p>{episode.raw_owner_input}</p></Detail>
     <Detail title="发生了什么"><small>Observation</small>{episode.observations.map((item) => <p key={item.id}>{item.description}</p>)}</Detail>
     <Detail title="你的理解"><small>Owner Interpretation</small>{episode.owner_interpretations.length ? episode.owner_interpretations.map((item) => <p key={item.id}>{item.interpretation}</p>) : <p>未填写主人解释</p>}</Detail>
     <Detail title="结构化背景"><dl><dt>发生时间</dt><dd>{new Date(episode.happened_at).toLocaleString()}</dd><dt>更新时间</dt><dd>{new Date(episode.updated_at).toLocaleString()}</dd><dt>类型</dt><dd>{episodeTypeLabel(episode.episode_type)}</dd><dt>地点</dt><dd>{episode.location || "未填写"}</dd><dt>触发背景</dt><dd>{episode.trigger_context || "未填写"}</dd><dt>Context</dt><dd>{episode.context ? JSON.stringify(episode.context) : "未填写"}</dd></dl></Detail>
     <Detail title="人工 Safety Check"><p>{episode.safety_check?.result || "未进行"}</p>{episode.safety_check?.danger_signals.map((signal) => <p key={signal}>{signal}</p>)}</Detail>
     {episode.veterinary_escalations?.length > 0 && <VeterinaryEscalationPanel episode={episode} onChanged={onEscalationChanged} />}
-    <UnderstandingPanel episode={episode} onOpenMemory={onOpenMemory} />
+    <UnderstandingPanel episode={episode} aiAnalysisEnabled={aiAnalysisEnabled} onOpenMemory={onOpenMemory} />
     <Detail title="Evidence 来源信息">{episode.evidence_references?.length ? episode.evidence_references.map((item) => <p key={item.id}>{item.source_type} · {item.field_path} · {new Date(item.observed_at).toLocaleString()}</p>) : <p>暂无来源记录</p>}</Detail>
     <Detail title="Observation Plan">{episode.plan_links?.length ? episode.plan_links.map((item) => <p key={item.id}>关联计划 #{item.plan_id}</p>) : <p>未关联观察计划</p>}</Detail>
     <Detail title="复评关系">{episode.result_of_follow_up && <p><button onClick={() => onOpenRelated(episode.result_of_follow_up!.source_episode_id)}>查看原记录</button></p>}{episode.scheduled_follow_ups?.length ? episode.scheduled_follow_ups.map((item) => <p key={item.id}>{new Date(item.scheduled_at).toLocaleString()} · {item.status}{item.result_episode_id && <button onClick={() => onOpenRelated(item.result_episode_id!)}>查看复评记录</button>}</p>) : <p>尚未安排复评</p>}</Detail>

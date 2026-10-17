@@ -324,3 +324,11 @@ export interface BaselineSnapshot {
   is_stale: boolean;
   evidences: BaselineEvidence[];
 }
+
+export interface Capabilities {
+  environment: string;
+  synthetic_data: boolean;
+  dataset_version: string | null;
+  ai_analysis_enabled: boolean;
+  model_qualification: "NOT_QUALIFIED";
+}
