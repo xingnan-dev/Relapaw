@@ -96,6 +96,43 @@ def test_only_confirmed_current_claim_can_become_candidate(client, pet):
     assert created.json()["evidence_snapshot"][0]["excerpt"] == episode["raw_owner_input"]
 
 
+def test_manual_memory_works_without_ai_and_preserves_owner_wording(client, pet):
+    statement = "Mochi settles more easily when her blue blanket stays beside the window."
+    created = client.post(
+        f"/api/v1/pets/{pet['id']}/memory-candidates/manual",
+        json={"category": "COMFORT", "statement": statement},
+    )
+    assert created.status_code == 201
+    candidate = created.json()
+    assert candidate["source_type"] == "MANUAL"
+    assert candidate["claim_id"] is None
+    assert candidate["claim_snapshot"] == {
+        "claim_type": "COMFORT",
+        "statement": statement,
+        "confidence_label": "USER_STATED",
+    }
+    assert candidate["model_snapshot"] == {"source": "manual", "model_provider": "none"}
+    assert candidate["is_stale"] is False
+    assert candidate["state"] == "ELIGIBLE"
+
+    included = client.post(
+        f"/api/v1/memory-candidates/{candidate['id']}/decisions",
+        json={"request_id": "manual-include", "decision": "INCLUDE"},
+    )
+    assert included.status_code == 201
+    assert included.json()["state"] == "ACTIVE"
+    active = client.get(f"/api/v1/pets/{pet['id']}/long-term-memory").json()
+    assert active[0]["claim_snapshot"]["statement"] == statement
+
+
+def test_manual_memory_rejects_unknown_category(client, pet):
+    response = client.post(
+        f"/api/v1/pets/{pet['id']}/memory-candidates/manual",
+        json={"category": "DIAGNOSIS", "statement": "User text"},
+    )
+    assert response.status_code == 422
+
+
 def test_include_withdraw_and_reinclude_are_append_only(client, pet):
     _, _, claim_id = create_confirmed_claim(client, pet["id"])
     candidate = client.post(f"/api/v1/claims/{claim_id}/memory-candidate").json()

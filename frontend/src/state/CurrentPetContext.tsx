@@ -8,6 +8,7 @@ type CurrentPetStatus = "loading" | "available" | "none" | "error";
 
 interface CurrentPetValue {
   pet: Pet | null;
+  pets: Pet[];
   status: CurrentPetStatus;
   setCurrentPet: (pet: Pet) => void;
   clearCurrentPet: () => void;
@@ -18,6 +19,7 @@ const CurrentPetContext = createContext<CurrentPetValue | null>(null);
 
 export function CurrentPetProvider({ children }: { children: ReactNode }) {
   const [pet, setPet] = useState<Pet | null>(null);
+  const [pets, setPets] = useState<Pet[]>([]);
   const [status, setStatus] = useState<CurrentPetStatus>("loading");
   const [attempt, setAttempt] = useState(0);
 
@@ -35,6 +37,9 @@ export function CurrentPetProvider({ children }: { children: ReactNode }) {
           const restored = await getPet(storedId);
           if (!active) return;
           setPet(restored);
+          const available = await listPets();
+          if (!active) return;
+          setPets(available);
           setStatus("available");
           return;
         } catch (error) {
@@ -53,10 +58,12 @@ export function CurrentPetProvider({ children }: { children: ReactNode }) {
         const pets = await listPets();
         if (!active) return;
         if (pets.length > 0) {
+          setPets(pets);
           localStorage.setItem(CURRENT_PET_KEY, String(pets[0].id));
           setPet(pets[0]);
           setStatus("available");
         } else {
+          setPets([]);
           setPet(null);
           setStatus("none");
         }
@@ -72,10 +79,12 @@ export function CurrentPetProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<CurrentPetValue>(() => ({
     pet,
+    pets,
     status,
     setCurrentPet(nextPet) {
       localStorage.setItem(CURRENT_PET_KEY, String(nextPet.id));
       setPet(nextPet);
+      setPets((current) => current.some((item) => item.id === nextPet.id) ? current : [...current, nextPet]);
       setStatus("available");
     },
     clearCurrentPet() {
@@ -84,7 +93,7 @@ export function CurrentPetProvider({ children }: { children: ReactNode }) {
       setStatus("none");
     },
     retry() { setAttempt((value) => value + 1); },
-  }), [pet, status]);
+  }), [pet, pets, status]);
 
   return <CurrentPetContext.Provider value={value}>{children}</CurrentPetContext.Provider>;
 }

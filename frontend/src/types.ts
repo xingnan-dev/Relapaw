@@ -2,11 +2,13 @@ export interface Observation {
   id: number;
   episode_id: number;
   behavior_type: string;
+  standardized_category?: BehaviorCategory | null;
   description: string;
   source_type: string;
   confidence: number | null;
   measured_value: number | null;
   unit: string | null;
+  standardized_unit?: MeasurementUnit | null;
   created_at: string;
   updated_at: string;
 }
@@ -20,6 +22,8 @@ export interface OwnerInterpretation {
 }
 
 export type SafetyStatus = "NORMAL" | "NEED_MORE_INFO" | "ESCALATE_TO_VET";
+export type BehaviorCategory = "ACTIVITY" | "FEEDING" | "RESTING" | "SOCIAL" | "ELIMINATION" | "VOCALIZATION" | "GROOMING" | "MOBILITY" | "OTHER";
+export type MeasurementUnit = "seconds" | "minutes" | "count" | "meters" | "grams" | "milliliters";
 export type DangerSignal = "breathing_difficulty" | "prolonged_seizure" | "collapse_or_unable_to_stand" | "severe_bleeding" | "suspected_poisoning" | "other_urgent_concern";
 export type FollowUpStatus = "PENDING" | "COMPLETED" | "CANCELLED";
 export type FollowUpOutcome = "PERSISTING" | "IMPROVED" | "WORSENED" | "RESOLVED" | "NEW_SIGNS";
@@ -116,7 +120,7 @@ export interface CompleteEpisodeCreate {
   location?: string;
   trigger_context?: string;
   plan_id?: number;
-  observations: Array<{ behavior_type: string; description: string; source_type: "owner_direct" }>;
+  observations: Array<{ behavior_type: string; standardized_category?: BehaviorCategory; description: string; source_type: "owner_direct"; measured_value?: number; unit?: string; standardized_unit?: MeasurementUnit }>;
   owner_interpretations: Array<{ interpretation: string }>;
   safety_check: {
     result: SafetyStatus;
@@ -166,7 +170,7 @@ export interface PetCreate {
   neutered?: boolean;
 }
 
-export type AnalysisRunStatus = "COMPLETED" | "FAILED" | "BLOCKED_BY_SAFETY";
+export type AnalysisRunStatus = "RUNNING" | "COMPLETED" | "FAILED" | "BLOCKED_BY_SAFETY";
 export type ClaimStatus = "PROPOSED" | "CONFIRMED" | "REJECTED";
 export type ClaimConfidence = "LOW" | "MEDIUM" | "HIGH";
 export type ConfirmationDecision = "CONFIRMED" | "REJECTED";
@@ -262,12 +266,13 @@ export interface MemoryDecision {
 export interface MemoryCandidate {
   id: number;
   pet_id: number;
-  claim_id: number;
-  claim_snapshot: { claim_type: string; statement: string; confidence_label: ClaimConfidence };
+  claim_id: number | null;
+  source_type: "CLAIM" | "MANUAL";
+  claim_snapshot: { claim_type: string; statement: string; confidence_label: ClaimConfidence | "USER_STATED" };
   evidence_snapshot: Array<Record<string, unknown>>;
   uncertainty_snapshot: Array<Record<string, unknown>>;
   model_snapshot: Record<string, unknown>;
-  source_episode_updated_at: string;
+  source_episode_updated_at: string | null;
   created_at: string;
   is_stale: boolean;
   state: MemoryCandidateState;
@@ -330,5 +335,8 @@ export interface Capabilities {
   synthetic_data: boolean;
   dataset_version: string | null;
   ai_analysis_enabled: boolean;
-  model_qualification: "NOT_QUALIFIED";
+  model_qualification: "NOT_QUALIFIED" | "QUALIFIED";
+  model_qualification_id: string | null;
+  medical_knowledge_version: string;
+  medical_review_status: "PENDING" | "APPROVED";
 }

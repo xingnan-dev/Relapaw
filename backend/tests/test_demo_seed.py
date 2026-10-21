@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from app.core.config import settings
 from app.demo.dataset_v1 import DATASET_VERSION, EPISODES
 from app.demo.seed import seed_dataset
-from app.models import AnalysisRun, Episode, Pet
+from app.models import AnalysisRun, Episode, Pet, User
 
 
 BASE_NOW = datetime(2026, 10, 17, 12, tzinfo=timezone.utc)
@@ -47,7 +47,10 @@ def test_seed_failure_rolls_back_everything_and_writes_no_manifest(demo_db):
 def test_seed_refuses_nonempty_unknown_database(demo_db):
     sessions, manifest = demo_db
     with sessions() as db:
-        db.add(Pet(name="Real pet", species="dog"))
+        owner = User(status="DISABLED")
+        db.add(owner)
+        db.flush()
+        db.add(Pet(owner_user_id=owner.id, name="Real pet", species="dog"))
         db.commit()
         with pytest.raises(RuntimeError, match="not the expected demo dataset"):
             seed_dataset(db, manifest, base_now=BASE_NOW)

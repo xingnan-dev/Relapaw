@@ -19,7 +19,11 @@ EPISODE_LOADS = (
 
 
 def get_episode_detail(db: Session, episode_id: int) -> Episode | None:
-    return db.scalar(select(Episode).where(Episode.id == episode_id).options(*EPISODE_LOADS))
+    return db.scalar(
+        select(Episode)
+        .where(Episode.id == episode_id, Episode.deleted_at.is_(None))
+        .options(*EPISODE_LOADS)
+    )
 
 
 def get_pet_timeline(
@@ -32,7 +36,7 @@ def get_pet_timeline(
     episode_type: str | None = None,
     plan_id: int | None = None,
 ) -> tuple[list[Episode], int]:
-    filters = [Episode.pet_id == pet_id]
+    filters = [Episode.pet_id == pet_id, Episode.deleted_at.is_(None)]
     if from_at is not None:
         filters.append(Episode.happened_at >= from_at)
     if to_at is not None:

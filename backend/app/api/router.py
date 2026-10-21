@@ -1,8 +1,10 @@
 from fastapi import APIRouter
 
-from app.api.routes import analysis, baselines, capabilities, episodes, follow_ups, memory, owner_profiles, pets, resources
+from app.api.routes import analysis, auth, baselines, capabilities, episodes, follow_ups, memory, owner_profiles, pets, privacy, resources
 
 api_router = APIRouter(prefix="/api/v1")
+api_router.include_router(auth.router)
+api_router.include_router(privacy.router)
 api_router.include_router(capabilities.router)
 api_router.include_router(pets.router)
 api_router.include_router(owner_profiles.router)

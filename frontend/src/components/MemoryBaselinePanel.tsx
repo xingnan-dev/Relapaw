@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, decideMemoryCandidate, getLatestBaselineSnapshot, getPetBaseline, listMemoryCandidates, recomputeBaselineSnapshot } from "../api";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { ApiError, createManualMemoryCandidate, decideMemoryCandidate, getLatestBaselineSnapshot, getPetBaseline, listMemoryCandidates, recomputeBaselineSnapshot } from "../api";
 import type { BaselineMetric, BaselineSnapshot, BaselineWindow, MemoryCandidate, MemoryDecisionType, PetBaseline } from "../types";
 import { Button, StatusNotice, Surface } from "./ui";
 
@@ -54,14 +54,37 @@ function ManualBaseline({ petId }: { petId: number }) {
 function MemoryCandidates({ petId }: { petId: number }) {
   const [items, setItems] = useState<MemoryCandidate[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const [category, setCategory] = useState<"ROUTINE" | "PREFERENCE" | "TRIGGER" | "COMFORT" | "HEALTH_CONTEXT" | "OTHER">("ROUTINE");
+  const [statement, setStatement] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
   const load = useCallback(async () => {
     setState("loading");
     try { setItems(await listMemoryCandidates(petId)); setState("ready"); }
     catch { setState("error"); }
   }, [petId]);
   useEffect(() => { void load(); }, [load]);
+  async function createManual(event: FormEvent) {
+    event.preventDefault();
+    const wording = statement.trim();
+    if (!wording) return;
+    setCreating(true); setCreateError("");
+    try {
+      const candidate = await createManualMemoryCandidate(petId, { category, statement: wording });
+      setItems((current) => [candidate, ...current]);
+      setStatement("");
+      setState("ready");
+    } catch { setCreateError("手工候选保存失败；你的输入仍保留在表单中，请重试。"); }
+    finally { setCreating(false); }
+  }
   return <section aria-labelledby="memory-title"><h3 id="memory-title">长期记忆候选</h3>
-    <p className="section-help">仅来自用户已确认的 Claim；建立候选不等于纳入，撤回也不会改写原始记录。</p>
+    <p className="section-help">可以由你直接写下，也可以来自你已确认的 Claim；建立候选不等于纳入，撤回也不会改写原始记录。</p>
+    <form className="editor-form" onSubmit={(event) => void createManual(event)}>
+      <label>记忆类别<select value={category} onChange={(event) => setCategory(event.target.value as typeof category)}><option value="ROUTINE">日常规律</option><option value="PREFERENCE">偏好</option><option value="TRIGGER">触发背景</option><option value="COMFORT">安抚方式</option><option value="HEALTH_CONTEXT">健康背景（非诊断）</option><option value="OTHER">其他</option></select></label>
+      <label>你的原话<textarea required maxLength={2000} value={statement} onChange={(event) => setStatement(event.target.value)} placeholder="例如：它在窗边放着蓝色毯子时更容易安定下来。" /></label>
+      <Button variant="primary" busy={creating} type="submit">{creating ? "正在保存…" : "建立手工候选"}</Button>
+      {createError && <StatusNotice tone="danger" role="alert">{createError}</StatusNotice>}
+    </form>
     {state === "loading" && <p role="status">正在读取长期记忆候选…</p>}
     {state === "error" && <StatusNotice tone="warning" role="alert" action={<Button onClick={() => void load()}>重试</Button>}>候选读取失败。</StatusNotice>}
     {state === "ready" && items.length === 0 && <StatusNotice>尚无长期记忆候选。请先在 Episode 的已确认 Claim 中建立候选。</StatusNotice>}
@@ -85,7 +108,7 @@ function CandidateCard({ candidate, onChange }: { candidate: MemoryCandidate; on
   return <Surface tone={candidate.state === "ACTIVE" ? "emphasis" : "default"} className="memory-card">
     <div className="state-heading"><strong>候选 #{candidate.id}</strong><span>{memoryStateLabels[candidate.state]}{candidate.is_stale && candidate.state !== "STALE" ? " · 来源已变化" : ""}</span></div>
     <p>{candidate.claim_snapshot.statement}</p>
-    <p className="meta-line">模型生成，经用户确认 · {candidate.claim_snapshot.claim_type} · 置信度 {candidate.claim_snapshot.confidence_label}</p>
+    <p className="meta-line">{candidate.source_type === "MANUAL" ? "用户原话" : "模型生成，经用户确认"} · {candidate.claim_snapshot.claim_type}{candidate.source_type === "CLAIM" ? ` · 置信度 ${candidate.claim_snapshot.confidence_label}` : ""}</p>
     {candidate.is_stale && <StatusNotice tone="warning">来源 Episode 已变化；该候选不可重新纳入，但仍可撤回既有纳入决定。</StatusNotice>}
     {action && <Button variant={action === "WITHDRAW" ? "danger" : "primary"} busy={pending} onClick={() => void decide(action)}>{pending ? "正在保存…" : action === "INCLUDE" ? (candidate.state === "WITHDRAWN" ? "重新纳入长期记忆" : "纳入长期记忆") : "撤回长期记忆"}</Button>}
     {error && <StatusNotice tone="danger" role="alert">{error}</StatusNotice>}

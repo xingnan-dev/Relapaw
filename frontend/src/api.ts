@@ -11,8 +11,19 @@ export class ApiError extends Error {
   }
 }
 
+let activeCsrfToken: string | null = null;
+
+export function setCsrfToken(token: string | null): void {
+  activeCsrfToken = token;
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+  const method = (init?.method ?? "GET").toUpperCase();
+  const headers = new Headers(init?.headers);
+  if (!["GET", "HEAD", "OPTIONS"].includes(method) && activeCsrfToken && !headers.has("X-CSRF-Token")) {
+    headers.set("X-CSRF-Token", activeCsrfToken);
+  }
+  const response = await fetch(url, { ...init, headers, credentials: "include" });
   if (!response.ok) {
     let payload: { error?: { code?: string; message?: string } } | undefined;
     try {
@@ -20,10 +31,91 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     } catch {
       // The status code remains actionable even when a proxy returns non-JSON.
     }
+    if (response.status === 401) window.dispatchEvent(new Event("relapaw:session-expired"));
+    if (response.status === 403 && payload?.error?.code === "CONSENT_REQUIRED") {
+      window.dispatchEvent(new Event("relapaw:consent-required"));
+    }
     throw new ApiError(payload?.error?.message ?? "Request failed", response.status, payload?.error?.code);
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+export interface AuthSession { user_id: string; status: "ACTIVE"; consent_required: boolean; }
+
+export interface PrivacyNotice {
+  terms_version: string;
+  privacy_version: string;
+  legal_review_status: "APPROVED" | "PENDING";
+  data_inventory_version: string;
+}
+
+export function getAuthSession(): Promise<AuthSession> {
+  return request("/api/v1/auth/session");
+}
+
+export function requestLoginChallenge(email: string): Promise<{ status: string }> {
+  return request("/api/v1/auth/otp/request", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }),
+  });
+}
+
+export function verifyLoginChallenge(email: string, code: string): Promise<AuthSession> {
+  return request("/api/v1/auth/otp/verify", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, code }),
+  });
+}
+
+export function getCsrfToken(): Promise<{ csrf_token: string }> {
+  return request("/api/v1/auth/csrf", { method: "POST" });
+}
+
+export function logout(csrfToken: string): Promise<void> {
+  return request("/api/v1/auth/logout", {
+    method: "POST", headers: { "X-CSRF-Token": csrfToken },
+  });
+}
+
+export function getPrivacyNotice(): Promise<PrivacyNotice> {
+  return request("/api/v1/privacy/notice");
+}
+
+export function acceptPrivacyConsent(notice: PrivacyNotice): Promise<{ status: string }> {
+  return request("/api/v1/privacy/consent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      terms_version: notice.terms_version,
+      privacy_version: notice.privacy_version,
+      source: "ONBOARDING",
+      affirm_adult_owner: true,
+    }),
+  });
+}
+
+export async function downloadAccountExport(): Promise<void> {
+  const response = await fetch("/api/v1/privacy/export", { credentials: "include" });
+  if (!response.ok) {
+    if (response.status === 401) window.dispatchEvent(new Event("relapaw:session-expired"));
+    let code: string | undefined;
+    try { code = (await response.clone().json() as { error?: { code?: string } }).error?.code; } catch { /* proxy response */ }
+    if (response.status === 403 && code === "CONSENT_REQUIRED") window.dispatchEvent(new Event("relapaw:consent-required"));
+    throw new ApiError("Export failed", response.status, code);
+  }
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "relapaw-account-export.json";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export function requestAccountDeletion(): Promise<{ status: string; deletion_due_at: string }> {
+  return request("/api/v1/privacy/account", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirmation: "DELETE MY ACCOUNT" }),
+  });
 }
 
 export function listPets(): Promise<Pet[]> {
@@ -119,6 +211,17 @@ export function getPetBaseline(petId: number): Promise<PetBaseline> {
 
 export function listMemoryCandidates(petId: number): Promise<MemoryCandidate[]> {
   return request(`/api/v1/pets/${petId}/memory-candidates`);
+}
+
+export function createManualMemoryCandidate(
+  petId: number,
+  payload: { category: "ROUTINE" | "PREFERENCE" | "TRIGGER" | "COMFORT" | "HEALTH_CONTEXT" | "OTHER"; statement: string },
+): Promise<MemoryCandidate> {
+  return request(`/api/v1/pets/${petId}/memory-candidates/manual`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 }
 
 export function decideMemoryCandidate(candidateId: number, requestId: string, decision: MemoryDecisionType): Promise<MemoryCandidate> {

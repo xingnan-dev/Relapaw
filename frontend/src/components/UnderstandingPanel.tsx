@@ -10,6 +10,7 @@ function requestId() {
 }
 
 function stateForRun(run: AnalysisRun): RequestState {
+  if (run.status === "RUNNING") return "loading";
   if (run.status === "BLOCKED_BY_SAFETY") return "safety-blocked";
   if (run.status === "COMPLETED") return "completed";
   if (run.error_code === "MODEL_NOT_CONFIGURED") return "model-not-configured";
@@ -49,6 +50,20 @@ export function UnderstandingPanel({ episode, aiAnalysisEnabled, onOpenMemory = 
   }, [episode.id]);
 
   useEffect(() => { void loadHistory(); }, [episode.id]);
+
+  useEffect(() => {
+    const running = runs.find((run) => run.id === activeRunId && run.status === "RUNNING");
+    if (!running) return;
+    const timer = window.setTimeout(() => {
+      void listAnalysisRuns(episode.id).then((items) => {
+        const next = Array.isArray(items) ? items : [];
+        setRuns(next);
+        const current = next.find((run) => run.id === activeRunId);
+        if (current && current.status !== "RUNNING") setRequestState(stateForRun(current));
+      }).catch(() => setRequestState("network-error"));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [runs, activeRunId, episode.id]);
 
   async function analyze() {
     if (episode.safety_check?.result !== "NORMAL") {
@@ -128,6 +143,7 @@ function AnalysisRunView({ run, readOnly, onDecision, onOpenMemory }: { run: Ana
     <p><strong>状态：</strong>{run.status}{run.error_code ? ` · ${run.error_code}` : ""}</p>
     <dl className="contract-meta"><dt>模型</dt><dd>{run.model_provider} / {run.model_name} / {run.model_version}</dd><dt>Adapter</dt><dd>{run.adapter_name}</dd><dt>Prompt 契约</dt><dd>{run.prompt_contract_version}</dd><dt>输入契约</dt><dd>{run.input_contract_version}</dd><dt>输出契约</dt><dd>{run.output_contract_version}</dd></dl>
     {run.status === "BLOCKED_BY_SAFETY" && <StatusNotice tone="danger" title="Safety blocked">没有调用模型，也没有生成 Claim。</StatusNotice>}
+    {run.status === "RUNNING" && <StatusNotice tone="info">此请求已被服务端接收，分析仍在进行；相同 request_id 不会重复调用模型。</StatusNotice>}
     {run.status === "FAILED" && <StatusNotice tone="warning">此运行失败，没有可确认的模型结果。</StatusNotice>}
     {run.claims.map((claim) => <ClaimView key={claim.id} claim={claim} runStale={run.is_stale} readOnly={readOnly} onDecision={onDecision} onOpenMemory={onOpenMemory} />)}
   </article>;

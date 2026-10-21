@@ -52,7 +52,7 @@ def test_demo_serves_index_assets_and_keeps_api_and_health_priority(tmp_path):
     assert "Relapaw demo" in asset.text
     assert health.status_code == 200
     assert health.json()["static_frontend"] is True
-    assert capabilities.status_code == 200
+    assert capabilities.status_code == 401
 
 
 def test_demo_requires_static_dir():

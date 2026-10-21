@@ -49,6 +49,39 @@ def source(
     )
 
 
+def test_standardized_category_and_unit_enable_comparison_without_replacing_raw_fields():
+    sources = [
+        EpisodeSource(
+            id=index,
+            happened_at=dt(10 + index),
+            updated_at=dt(10 + index),
+            episode_type="owner_wording",
+            duration_seconds=None,
+            frequency_count=None,
+            intensity=None,
+            observations=(ObservationValue(
+                id=index,
+                behavior_type=f"raw-owner-label-{index}",
+                measured_value=float(index * 10),
+                unit="owner-entered-seconds",
+                updated_at=dt(10 + index),
+                standardized_category="RESTING",
+                standardized_unit="seconds",
+            ),),
+        )
+        for index in (1, 2, 3)
+    ]
+    calculation = calculate_baseline("all", dt(20), sources)
+    metric = next(item for item in calculation.metrics if item["field"] == "measured_value")
+    assert metric["behavior_type"] == "RESTING"
+    assert metric["unit"] == "seconds"
+    assert metric["median"] == 20.0
+    assert [item.observations[0].behavior_type for item in sources] == [
+        "raw-owner-label-1", "raw-owner-label-2", "raw-owner-label-3"
+    ]
+    assert [item.observations[0].unit for item in sources] == ["owner-entered-seconds"] * 3
+
+
 def metric(result, key):
     return next(item for item in result.metrics if item["key"] == key)
 

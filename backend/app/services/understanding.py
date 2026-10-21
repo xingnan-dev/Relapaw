@@ -1,8 +1,9 @@
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from pydantic import ValidationError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.api.errors import APIError
@@ -122,8 +123,29 @@ def _new_run(episode: Episode, payload: AnalysisRunCreate, adapter: TextUndersta
         normalized_output=output.model_dump(mode="json") if output else None,
         error_code=error_code,
         source_episode_updated_at=episode.updated_at,
-        completed_at=now,
+        completed_at=None if status == AnalysisRunStatus.RUNNING.value else now,
     )
+
+
+def _lock_run_and_live_episode(db: Session, run_id: int, episode_id: int) -> tuple[AnalysisRun, Episode]:
+    run = db.scalar(select(AnalysisRun).where(AnalysisRun.id == run_id).with_for_update())
+    episode = db.scalar(
+        select(Episode).where(Episode.id == episode_id, Episode.deleted_at.is_(None)).with_for_update()
+    )
+    if run is None or episode is None:
+        db.rollback()
+        raise AnalysisExecutionError(
+            "ANALYSIS_SOURCE_DELETED",
+            "The source Episode was deleted while analysis was running; no result was saved",
+            409,
+        )
+    return run, episode
+
+
+def _fail_run(run: AnalysisRun, code: str) -> None:
+    run.status = AnalysisRunStatus.FAILED.value
+    run.error_code = code
+    run.completed_at = datetime.now(timezone.utc)
 
 
 def execute_analysis(db: Session, episode_id: int, payload: AnalysisRunCreate, adapter: TextUnderstandingAdapter) -> AnalysisRun:
@@ -132,8 +154,20 @@ def execute_analysis(db: Session, episode_id: int, payload: AnalysisRunCreate, a
         AnalysisRun.request_id == payload.request_id,
     ).options(*RUN_LOADS))
     if existing is not None:
+        created_at = existing.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        if (
+            existing.status == AnalysisRunStatus.RUNNING.value
+            and created_at <= datetime.now(timezone.utc) - timedelta(minutes=5)
+        ):
+            _fail_run(existing, "ANALYSIS_INTERRUPTED")
+            db.flush()
         return existing
 
+    db.scalar(
+        select(Episode).where(Episode.id == episode_id, Episode.deleted_at.is_(None)).with_for_update()
+    )
     episode = get_episode_detail(db, episode_id)
     if episode is None:
         raise APIError(404, "EPISODE_NOT_FOUND", "Episode not found")
@@ -144,34 +178,58 @@ def execute_analysis(db: Session, episode_id: int, payload: AnalysisRunCreate, a
         db.flush()
         return get_analysis_run(db, run.id) or run
 
-    # The snapshot and source timestamp are now immutable for this run. End the
-    # read transaction before waiting on a remote provider; persistence below
-    # starts a new, short transaction for either FAILED or COMPLETED state.
-    db.commit()
+    # Persist an idempotency reservation before waiting on a remote provider.
+    # A concurrent request with the same key observes RUNNING and cannot invoke
+    # the provider a second time.
+    run = _new_run(episode, payload, adapter, input_data, AnalysisRunStatus.RUNNING.value)
+    db.add(run)
+    try:
+        db.flush()
+        run_id = run.id
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        concurrent = db.scalar(select(AnalysisRun).where(
+            AnalysisRun.episode_id == episode_id,
+            AnalysisRun.request_id == payload.request_id,
+        ).options(*RUN_LOADS))
+        if concurrent is None:
+            raise
+        return concurrent
     try:
         output = UnderstandingOutput.model_validate(adapter.analyze(input_data))
     except AdapterError as exc:
-        run = _new_run(episode, payload, adapter, input_data, AnalysisRunStatus.FAILED.value, error_code=exc.code)
-        db.add(run)
+        run, _episode = _lock_run_and_live_episode(db, run_id, episode_id)
+        _fail_run(run, exc.code)
         db.flush()
         raise AnalysisExecutionError(exc.code, exc.message, exc.status_code)
     except ValidationError:
-        run = _new_run(episode, payload, adapter, input_data, AnalysisRunStatus.FAILED.value, error_code="MODEL_OUTPUT_INVALID")
-        db.add(run)
+        run, _episode = _lock_run_and_live_episode(db, run_id, episode_id)
+        _fail_run(run, "MODEL_OUTPUT_INVALID")
         db.flush()
         raise AnalysisExecutionError("MODEL_OUTPUT_INVALID", "Model output did not match the required contract", 502)
 
     evidence_by_key = {item.key: item for item in input_data.evidence}
     referenced_keys = {reference.evidence_key for claim in output.claims for reference in claim.evidence}
     if not referenced_keys.issubset(evidence_by_key):
-        run = _new_run(episode, payload, adapter, input_data, AnalysisRunStatus.FAILED.value, error_code="MODEL_EVIDENCE_INVALID")
-        db.add(run)
+        run, _episode = _lock_run_and_live_episode(db, run_id, episode_id)
+        _fail_run(run, "MODEL_EVIDENCE_INVALID")
         db.flush()
         raise AnalysisExecutionError("MODEL_EVIDENCE_INVALID", "Model output referenced evidence outside the Episode", 502)
 
-    run = _new_run(episode, payload, adapter, input_data, AnalysisRunStatus.COMPLETED.value, output=output)
-    db.add(run)
-    db.flush()
+    run, episode = _lock_run_and_live_episode(db, run_id, episode_id)
+    descriptor = adapter.descriptor
+    run.status = AnalysisRunStatus.COMPLETED.value
+    run.adapter_name = descriptor.adapter_name
+    run.model_provider = descriptor.model_provider
+    run.model_name = descriptor.model_name
+    run.model_version = descriptor.model_version
+    run.prompt_contract_version = descriptor.prompt_contract_version
+    run.input_contract_version = descriptor.input_contract_version
+    run.output_contract_version = descriptor.output_contract_version
+    run.normalized_output = output.model_dump(mode="json")
+    run.error_code = None
+    run.completed_at = datetime.now(timezone.utc)
     source_rows = {f"evidence:{item.id}": item for item in episode.evidence_references}
     source_ids = [item.id for item in episode.evidence_references]
     db.refresh(episode, attribute_names=["updated_at"])

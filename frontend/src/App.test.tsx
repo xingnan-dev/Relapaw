@@ -4,6 +4,7 @@ import App from "./App";
 import { CapabilitiesProvider } from "./state/CapabilitiesContext";
 
 const pet = { id: 7, name: "Mochi", species: "cat", breed: null, birth_date: null, approximate_age: null, sex: null, neutered: null, created_at: "2026-01-01T00:00:00Z" };
+const secondPet = { ...pet, id: 8, name: "Luna", species: "dog" };
 
 function json(data: unknown, ok = true, status = ok ? 200 : 500) {
   return Promise.resolve({ ok, status, json: () => Promise.resolve(data) });
@@ -177,6 +178,38 @@ describe("main shell", () => {
     render(<App />);
     await screen.findByRole("heading", { name: "Mochi" });
     expect(screen.queryByRole("region", { name: /今天，也好好看见它/ })).not.toBeInTheDocument();
+  });
+
+  it("switches between only the signed-in user's pets and remounts pet-scoped pages", async () => {
+    const base = mockApi({ pets: [pet, secondPet] });
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("/api/v1/pets/8/follow-ups") || url.startsWith("/api/v1/pets/8/observation-plans")) return json([]);
+      if (url.startsWith("/api/v1/pets/8/timeline")) return json({ items: [], total: 0, page: 1, page_size: 20, has_more: false });
+      return base(input, init);
+    }));
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Mochi" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("当前宠物"), { target: { value: "8" } });
+    expect(await screen.findByRole("heading", { name: "Luna" })).toBeInTheDocument();
+    expect(localStorage.getItem("relapaw.currentPetId")).toBe("8");
+  });
+
+  it("requires confirmation before a pet switch can discard an unsaved record draft", async () => {
+    vi.stubGlobal("fetch", mockApi({ pets: [pet, secondPet] }));
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<App />);
+    await screen.findByRole("heading", { name: "Mochi" });
+    fireEvent.click(screen.getByRole("button", { name: "Understand" }));
+    fireEvent.change(screen.getByLabelText("原始描述"), { target: { value: "尚未保存" } });
+    fireEvent.change(screen.getByLabelText("当前宠物"), { target: { value: "8" } });
+    expect(confirm).toHaveBeenCalled();
+    expect(screen.getByLabelText("当前宠物")).toHaveValue("7");
+    expect(screen.getByLabelText("原始描述")).toHaveValue("尚未保存");
+    confirm.mockReturnValue(true);
+    fireEvent.change(screen.getByLabelText("当前宠物"), { target: { value: "8" } });
+    await waitFor(() => expect(screen.getByLabelText("当前宠物")).toHaveValue("8"));
+    expect(screen.getByLabelText("原始描述")).toHaveValue("");
   });
 
   it("labels a verified synthetic demo dataset", async () => {

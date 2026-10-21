@@ -55,7 +55,7 @@ def list_pet_follow_ups(
     timing: str | None,
     timezone_offset_minutes: int,
 ) -> list[tuple[EpisodeFollowUp, str]]:
-    filters = [Episode.pet_id == pet_id]
+    filters = [Episode.pet_id == pet_id, Episode.deleted_at.is_(None)]
     if status is not None:
         filters.append(EpisodeFollowUp.status == status.value)
     statement = (

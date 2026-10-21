@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 
 DATASET_VERSION = "relapaw-demo/v1-observe-review-baseline"
-SCHEMA_REVISION = "20261012_0008"
+SCHEMA_REVISION = "20261020_0014"
 SYNTHETIC_PET_NAME = "CanCan12"
 RECORDED_MODEL_VERSION = "recorded-demo/v1"
 
@@ -39,4 +39,3 @@ def normalized_base_now(value: datetime) -> datetime:
 
 def happened_at(base_now: datetime, days_ago: int) -> datetime:
     return normalized_base_now(base_now) - timedelta(days=days_ago)
-

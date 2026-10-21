@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+from typing import Literal
+
 from pydantic import Field, field_validator
 
 from app.domain.enums import MemoryCandidateState, MemoryDecisionType
@@ -11,6 +13,11 @@ class MemoryDecisionCreate(StrictModel):
     request_id: str = Field(min_length=1, max_length=100)
     decision: MemoryDecisionType
     note: str | None = Field(default=None, max_length=2000)
+
+
+class ManualMemoryCreate(StrictModel):
+    category: Literal["ROUTINE", "PREFERENCE", "TRIGGER", "COMFORT", "HEALTH_CONTEXT", "OTHER"]
+    statement: str = Field(min_length=1, max_length=2000)
 
 
 class MemoryDecisionRead(ORMModel):
@@ -30,12 +37,13 @@ class MemoryDecisionRead(ORMModel):
 class MemoryCandidateRead(ORMModel):
     id: int
     pet_id: int
-    claim_id: int
+    claim_id: int | None
+    source_type: Literal["CLAIM", "MANUAL"]
     claim_snapshot: dict
     evidence_snapshot: list[dict]
     uncertainty_snapshot: list[dict]
     model_snapshot: dict
-    source_episode_updated_at: datetime
+    source_episode_updated_at: datetime | None
     created_at: datetime
     is_stale: bool
     state: MemoryCandidateState
@@ -43,5 +51,7 @@ class MemoryCandidateRead(ORMModel):
 
     @field_validator("source_episode_updated_at", "created_at")
     @classmethod
-    def database_datetimes_are_utc(cls, value: datetime) -> datetime:
+    def database_datetimes_are_utc(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
         return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)

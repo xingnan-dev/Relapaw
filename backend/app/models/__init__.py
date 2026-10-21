@@ -22,6 +22,12 @@ from app.models.entities import (
     Uncertainty,
     UserConfirmation,
     VeterinaryEscalation,
+    User,
+    UserIdentity,
+    IdentityInvitation,
+    UserSession,
+    TermsAcceptance,
+    AuditEvent,
 )
 
 __all__ = [
@@ -32,4 +38,5 @@ __all__ = [
     "MemoryCandidate", "MemoryDecision",
     "BaselineSnapshot",
     "BaselineEvidence",
+    "User", "UserIdentity", "IdentityInvitation", "UserSession", "TermsAcceptance", "AuditEvent",
 ]

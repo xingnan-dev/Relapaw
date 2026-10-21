@@ -7,7 +7,9 @@ from sqlalchemy.pool import StaticPool
 import app.models  # noqa: F401
 from app.db.base import Base
 from app.db.session import get_db
+from app.api.deps import require_csrf, require_current_user
 from app.main import app
+from app.models import User
 
 
 @pytest.fixture
@@ -24,12 +26,18 @@ def client():
 
     TestingSession = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     Base.metadata.create_all(engine)
+    test_user = User(id="00000000-0000-0000-0000-000000000001", status="ACTIVE")
+    with TestingSession() as db:
+        db.add(test_user)
+        db.commit()
 
     def override_get_db():
         with TestingSession() as db:
             yield db
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[require_current_user] = lambda: test_user
+    app.dependency_overrides[require_csrf] = lambda: None
     test_client = TestClient(app)
     yield test_client
     test_client.close()
@@ -56,6 +64,6 @@ def demo_db(tmp_path):
     Base.metadata.create_all(demo_engine)
     with demo_engine.begin() as connection:
         connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
-        connection.execute(text("INSERT INTO alembic_version VALUES ('20261012_0008')"))
+        connection.execute(text("INSERT INTO alembic_version VALUES ('20261020_0014')"))
     yield sessionmaker(bind=demo_engine, expire_on_commit=False), tmp_path / "manifest.json"
     demo_engine.dispose()

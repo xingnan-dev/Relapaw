@@ -1,0 +1,9 @@
+.git
+**/.venv
+**/.pytest_cache
+**/.pytest-*
+frontend/node_modules
+frontend/dist
+backend/relapaw.db
+backend/.env
+.env

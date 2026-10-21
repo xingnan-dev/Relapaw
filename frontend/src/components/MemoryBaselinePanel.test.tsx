@@ -8,7 +8,7 @@ function json(data: unknown, ok = true, status = ok ? 200 : 500) {
 }
 
 const candidate: MemoryCandidate = {
-  id: 4, pet_id: 7, claim_id: 71, claim_snapshot: { claim_type: "POSSIBLE_EXPLANATION", statement: "一种经用户确认的可能解释。", confidence_label: "LOW" },
+  id: 4, pet_id: 7, claim_id: 71, source_type: "CLAIM", claim_snapshot: { claim_type: "POSSIBLE_EXPLANATION", statement: "一种经用户确认的可能解释。", confidence_label: "LOW" },
   evidence_snapshot: [], uncertainty_snapshot: [], model_snapshot: {}, source_episode_updated_at: "2026-10-11T08:00:00Z", created_at: "2026-10-11T08:00:00Z",
   is_stale: false, state: "ELIGIBLE", decisions: [],
 };
@@ -23,6 +23,30 @@ const snapshot: BaselineSnapshot = {
 beforeEach(() => vi.restoreAllMocks());
 
 describe("memory and baseline closure", () => {
+  it("creates a manual candidate without an analysis run and preserves wording", async () => {
+    const bodies: string[] = [];
+    const manual = {
+      ...candidate, id: 9, claim_id: null, source_type: "MANUAL" as const,
+      claim_snapshot: { claim_type: "COMFORT", statement: "蓝色毯子在窗边时更容易安定。", confidence_label: "USER_STATED" as const },
+      model_snapshot: { source: "manual", model_provider: "none" }, source_episode_updated_at: null,
+    };
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/baseline")) return json({ error: {} }, false, 404);
+      if (url.endsWith("/memory-candidates/manual") && init?.method === "POST") { bodies.push(String(init.body)); return json(manual, true, 201); }
+      if (url.endsWith("/memory-candidates")) return json([]);
+      if (url.includes("baseline-snapshots/latest")) return json({ error: {} }, false, 404);
+      return json({}, false, 404);
+    }));
+    render(<MemoryBaselinePanel petId={7} />);
+    fireEvent.change(screen.getByLabelText("记忆类别"), { target: { value: "COMFORT" } });
+    fireEvent.change(screen.getByLabelText("你的原话"), { target: { value: "蓝色毯子在窗边时更容易安定。" } });
+    fireEvent.click(screen.getByRole("button", { name: "建立手工候选" }));
+    expect(await screen.findByText("蓝色毯子在窗边时更容易安定。")).toBeInTheDocument();
+    expect(screen.getByText(/用户原话 · COMFORT/)).toBeInTheDocument();
+    expect(JSON.parse(bodies[0])).toEqual({ category: "COMFORT", statement: "蓝色毯子在窗边时更容易安定。" });
+  });
+
   it("keeps manual, memory and quantitative data distinct and drills into frozen evidence", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
       const url = String(input);

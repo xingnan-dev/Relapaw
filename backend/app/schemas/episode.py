@@ -3,18 +3,26 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.domain.enums import DangerSignal, EvidenceSourceType, ObservationSourceType, SafetyStatus, VeterinaryEscalationStatus
+from app.domain.enums import BehaviorCategory, DangerSignal, EvidenceSourceType, MeasurementUnit, ObservationSourceType, SafetyStatus, VeterinaryEscalationStatus
 from app.schemas.common import ORMModel
 from app.schemas.time import require_aware_utc
 
 
 class ObservationCreate(BaseModel):
     behavior_type: str = Field(min_length=1, max_length=100)
+    standardized_category: BehaviorCategory | None = None
     description: str = Field(min_length=1)
     source_type: ObservationSourceType
     confidence: float | None = Field(default=None, ge=0, le=1)
     measured_value: float | None = None
     unit: str | None = Field(default=None, max_length=50)
+    standardized_unit: MeasurementUnit | None = None
+
+    @model_validator(mode="after")
+    def standardized_measurement_is_complete(self):
+        if self.standardized_unit is not None and self.measured_value is None:
+            raise ValueError("standardized_unit requires measured_value")
+        return self
 
 
 class ObservationRead(ObservationCreate, ORMModel):

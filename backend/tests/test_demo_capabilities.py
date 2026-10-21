@@ -66,7 +66,29 @@ def test_capabilities_default_to_ai_disabled(client):
         "dataset_version": None,
         "ai_analysis_enabled": False,
         "model_qualification": "NOT_QUALIFIED",
+        "model_qualification_id": None,
+        "medical_knowledge_version": "medical-safety/v1",
+        "medical_review_status": "PENDING",
     }
+
+
+def test_raw_ai_switch_cannot_bypass_model_qualification(client, pet, monkeypatch):
+    episode = client.post("/api/v1/episodes/complete", json=episode_payload(pet["id"])).json()
+    adapter = CountingAdapter()
+    app.dependency_overrides[get_text_understanding_adapter] = lambda: adapter
+    monkeypatch.setattr("app.api.routes.capabilities.settings.ai_enabled", True)
+    monkeypatch.setattr("app.api.routes.capabilities.settings.model_qualification", "NOT_QUALIFIED")
+
+    capabilities = client.get("/api/v1/capabilities").json()
+    assert capabilities["ai_analysis_enabled"] is False
+    assert capabilities["model_qualification"] == "NOT_QUALIFIED"
+    response = client.post(
+        f"/api/v1/episodes/{episode['id']}/analysis-runs",
+        json={"request_id": "unqualified-model"},
+    )
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "MODEL_NOT_QUALIFIED"
+    assert adapter.calls == 0
 
 
 def test_normal_episode_cannot_create_analysis_when_feature_is_disabled(client, pet):

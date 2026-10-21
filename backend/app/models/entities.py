@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+from uuid import uuid4
 from typing import Any, ClassVar
 
 from sqlalchemy import JSON, Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
@@ -11,6 +12,9 @@ class Pet(Base):
     __tablename__ = "pets"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    owner_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     species: Mapped[str] = mapped_column(String(50), nullable=False)
     breed: Mapped[str | None] = mapped_column(String(100))
@@ -26,12 +30,98 @@ class Pet(Base):
     observation_plans: Mapped[list["ObservationPlan"]] = relationship(back_populates="pet", cascade="all, delete-orphan")
     memory_candidates: Mapped[list["MemoryCandidate"]] = relationship(back_populates="pet", cascade="all, delete-orphan")
     baseline_snapshots: Mapped[list["BaselineSnapshot"]] = relationship(back_populates="pet", cascade="all, delete-orphan")
+    owner: Mapped["User"] = relationship(back_populates="pets")
+
+
+class User(Base):
+    __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint("status IN ('ACTIVE', 'PENDING_DELETION', 'DISABLED')", name="ck_user_status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="ACTIVE")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deletion_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deletion_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+
+    identities: Mapped[list["UserIdentity"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    sessions: Mapped[list["UserSession"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    terms_acceptances: Mapped[list["TermsAcceptance"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    pets: Mapped[list[Pet]] = relationship(back_populates="owner", cascade="all, delete-orphan")
+
+
+class UserIdentity(Base):
+    __tablename__ = "user_identities"
+    __table_args__ = (UniqueConstraint("provider", "subject", name="uq_user_identity_provider_subject"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    user: Mapped[User] = relationship(back_populates="identities")
+
+
+class IdentityInvitation(Base):
+    __tablename__ = "identity_invitations"
+    __table_args__ = (
+        UniqueConstraint("provider", "subject", name="uq_identity_invitation_provider_subject"),
+        CheckConstraint("status IN ('PENDING', 'ACCEPTED', 'REVOKED')", name="ck_identity_invitation_status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="PENDING")
+    accepted_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    csrf_token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    user_agent_summary: Mapped[str | None] = mapped_column(String(200))
+
+    user: Mapped[User] = relationship(back_populates="sessions")
+
+
+class TermsAcceptance(Base):
+    __tablename__ = "terms_acceptances"
+    __table_args__ = (
+        UniqueConstraint("user_id", "terms_version", "privacy_version", name="uq_terms_acceptance_versions"),
+        CheckConstraint("source IN ('ONBOARDING', 'VERSION_UPDATE')", name="ck_terms_acceptance_source"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    terms_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    privacy_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source: Mapped[str] = mapped_column(String(30), nullable=False)
+
+    user: Mapped[User] = relationship(back_populates="terms_acceptances")
 
 
 class OwnerProfile(Base):
     __tablename__ = "owner_profiles"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
     interaction_preference: Mapped[str | None] = mapped_column(Text)
     observation_preference: Mapped[str | None] = mapped_column(Text)
     response_preference: Mapped[str | None] = mapped_column(Text)
@@ -68,6 +158,7 @@ class Episode(Base):
     trigger_context: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
     pet: Mapped[Pet] = relationship(back_populates="episodes")
     observations: Mapped[list["Observation"]] = relationship(back_populates="episode", cascade="all, delete-orphan")
@@ -91,11 +182,13 @@ class Observation(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     episode_id: Mapped[int] = mapped_column(ForeignKey("episodes.id", ondelete="CASCADE"), index=True)
     behavior_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    standardized_category: Mapped[str | None] = mapped_column(String(30), index=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     source_type: Mapped[str] = mapped_column(String(50), nullable=False)
     confidence: Mapped[float | None] = mapped_column(Float)
     measured_value: Mapped[float | None] = mapped_column(Float)
     unit: Mapped[str | None] = mapped_column(String(50))
+    standardized_unit: Mapped[str | None] = mapped_column(String(30))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     episode: Mapped[Episode] = relationship(back_populates="observations")
@@ -235,7 +328,7 @@ class AnalysisRun(Base):
     __tablename__ = "analysis_runs"
     __table_args__ = (
         UniqueConstraint("episode_id", "request_id", name="uq_analysis_run_episode_request"),
-        CheckConstraint("status IN ('COMPLETED', 'FAILED', 'BLOCKED_BY_SAFETY')", name="ck_analysis_run_status"),
+        CheckConstraint("status IN ('RUNNING', 'COMPLETED', 'FAILED', 'BLOCKED_BY_SAFETY')", name="ck_analysis_run_status"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -342,26 +435,39 @@ class UserConfirmation(Base):
 
 class MemoryCandidate(Base):
     __tablename__ = "memory_candidates"
-    __table_args__ = (UniqueConstraint("claim_id", name="uq_memory_candidates_claim_id"),)
+    __table_args__ = (
+        UniqueConstraint("claim_id", name="uq_memory_candidates_claim_id"),
+        CheckConstraint("source_type IN ('CLAIM', 'MANUAL')", name="ck_memory_candidate_source_type"),
+        CheckConstraint(
+            "(source_type = 'CLAIM' AND claim_id IS NOT NULL AND source_episode_updated_at IS NOT NULL) OR "
+            "(source_type = 'MANUAL' AND claim_id IS NULL AND source_episode_updated_at IS NULL)",
+            name="ck_memory_candidate_source_fields",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     pet_id: Mapped[int] = mapped_column(ForeignKey("pets.id", ondelete="CASCADE"), index=True)
-    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id", ondelete="CASCADE"), index=True)
+    claim_id: Mapped[int | None] = mapped_column(ForeignKey("claims.id", ondelete="CASCADE"), index=True)
+    source_type: Mapped[str] = mapped_column(String(20), nullable=False, default="CLAIM")
     claim_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     evidence_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
     uncertainty_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
     model_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
-    source_episode_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source_episode_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     pet: Mapped[Pet] = relationship(back_populates="memory_candidates")
-    claim: Mapped[Claim] = relationship(back_populates="memory_candidate")
+    claim: Mapped[Claim | None] = relationship(back_populates="memory_candidate")
     decisions: Mapped[list["MemoryDecision"]] = relationship(
         back_populates="candidate", cascade="all, delete-orphan", order_by="MemoryDecision.id"
     )
 
     @property
     def is_stale(self) -> bool:
+        if self.source_type == "MANUAL":
+            return False
+        if self.claim is None or self.source_episode_updated_at is None:
+            return True
         source = self.source_episode_updated_at
         current = self.claim.analysis_run.episode.updated_at
         if source.tzinfo is None:
@@ -456,3 +562,15 @@ class BaselineEvidence(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     snapshot: Mapped[BaselineSnapshot] = relationship(back_populates="evidences")
+
+
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    actor_pseudonym: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    subject_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    subject_pseudonym: Mapped[str] = mapped_column(String(64), nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

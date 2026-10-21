@@ -132,8 +132,8 @@ function EpisodePanel({ episode, state, mode, error, aiAnalysisEnabled, onBack, 
     <Detail title="Evidence 来源信息">{episode.evidence_references?.length ? episode.evidence_references.map((item) => <p key={item.id}>{item.source_type} · {item.field_path} · {new Date(item.observed_at).toLocaleString()}</p>) : <p>暂无来源记录</p>}</Detail>
     <Detail title="Observation Plan">{episode.plan_links?.length ? episode.plan_links.map((item) => <p key={item.id}>关联计划 #{item.plan_id}</p>) : <p>未关联观察计划</p>}</Detail>
     <Detail title="复评关系">{episode.result_of_follow_up && <p><button onClick={() => onOpenRelated(episode.result_of_follow_up!.source_episode_id)}>查看原记录</button></p>}{episode.scheduled_follow_ups?.length ? episode.scheduled_follow_ups.map((item) => <p key={item.id}>{new Date(item.scheduled_at).toLocaleString()} · {item.status}{item.result_episode_id && <button onClick={() => onOpenRelated(item.result_episode_id!)}>查看复评记录</button>}</p>) : <p>尚未安排复评</p>}</Detail>
-    {hasFollowUpHistory && <p className="safety-note">这条记录已有复评关系。为保留可追溯历史，不能删除。</p>}
-    {error && <p role="alert" className="form-error">{error}</p>}<div className="panel-actions episode-actions"><button onClick={onSchedule}>安排复评</button><button onClick={onEdit}>编辑记录</button><button className="danger-button" disabled={hasFollowUpHistory} onClick={onDelete}>删除记录</button></div>
+    {hasFollowUpHistory && <p className="safety-note">这条记录已有复评关系。删除会清除记录内容，并仅保留不可访问的最小关联占位。</p>}
+    {error && <p role="alert" className="form-error">{error}</p>}<div className="panel-actions episode-actions"><button onClick={onSchedule}>安排复评</button><button onClick={onEdit}>编辑记录</button><button className="danger-button" onClick={onDelete}>删除记录</button></div>
   </section>;
 }
 
@@ -200,5 +200,5 @@ function EpisodeEdit({ episode, error, onCancel, onSaved, onError }: { episode: 
 function DeleteConfirm({ episode, error, onCancel, onDeleted, onError }: { episode: Episode; error: string; onCancel: () => void; onDeleted: () => void; onError: (value: string) => void }) {
   const [submitting, setSubmitting] = useState(false);
   async function remove() { setSubmitting(true); onError(""); try { await deleteEpisode(episode.id); onDeleted(); } catch { onError("删除失败，记录仍然保留。请重试。"); } finally { setSubmitting(false); } }
-  return <section role="dialog" aria-modal="true" aria-labelledby="delete-title"><h2 id="delete-title">确认删除这条记录？</h2><p>删除后，原始记录及关联的 Observation、Owner Interpretation、Safety Check、Veterinary Escalation、Evidence 来源和计划关联都会被移除，且当前无法恢复。</p>{error && <p role="alert" className="form-error">{error}</p>}<div className="panel-actions"><button onClick={onCancel}>取消删除</button><button className="danger-button" disabled={submitting} onClick={() => void remove()}>{submitting ? "正在删除…" : "确认删除"}</button></div></section>;
+  return <section role="dialog" aria-modal="true" aria-labelledby="delete-title"><h2 id="delete-title">确认删除这条记录？</h2><p>删除后，原始记录及关联的 Observation、Owner Interpretation、Safety Check、Veterinary Escalation、Evidence、分析结果和受影响的基线快照都会被清除，且无法恢复。为维持已完成复评的引用完整性，系统可能仅保留不含内容且不可访问的占位记录。</p>{error && <p role="alert" className="form-error">{error}</p>}<div className="panel-actions"><button onClick={onCancel}>取消删除</button><button className="danger-button" disabled={submitting} onClick={() => void remove()}>{submitting ? "正在删除…" : "确认删除"}</button></div></section>;
 }

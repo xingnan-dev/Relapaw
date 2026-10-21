@@ -26,6 +26,7 @@ from app.models import (
     Episode,
     Pet,
     Uncertainty,
+    User,
     UserConfirmation,
 )
 from app.schemas.episode import CompleteEpisodeCreate
@@ -126,7 +127,14 @@ def seed_dataset(
         return False
 
     try:
+        demo_user = User(
+            id="00000000-0000-0000-0000-00000000d3e0",
+            status="DISABLED",
+        )
+        db.add(demo_user)
+        db.flush()
         pet = Pet(
+            owner_user_id=demo_user.id,
             name=SYNTHETIC_PET_NAME,
             species="dog",
             breed="synthetic mixed breed",

@@ -2,13 +2,15 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_pet
+from app.api.deps import require_claim, require_csrf, require_current_user, require_memory_candidate, require_pet
 from app.api.errors import APIError
 from app.db.session import get_db
-from app.schemas.memory import MemoryCandidateRead, MemoryDecisionCreate
+from app.models import User
+from app.schemas.memory import ManualMemoryCreate, MemoryCandidateRead, MemoryDecisionCreate
 from app.services.memory import (
     MemoryError,
     append_memory_decision,
+    create_manual_memory_candidate,
     get_memory_candidate_by_claim,
     list_long_term_memory,
     list_memory_candidates,
@@ -23,7 +25,8 @@ def _raise_memory_error(exc: MemoryError):
 
 
 @router.post("/claims/{claim_id}/memory-candidate", response_model=MemoryCandidateRead, status_code=201)
-def create_memory_candidate(claim_id: int, db: Session = Depends(get_db)):
+def create_memory_candidate(claim_id: int, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
+    require_claim(db, claim_id, user)
     try:
         candidate = materialize_memory_candidate(db, claim_id)
         db.commit()
@@ -39,20 +42,35 @@ def create_memory_candidate(claim_id: int, db: Session = Depends(get_db)):
         return existing
 
 
+@router.post("/pets/{pet_id}/memory-candidates/manual", response_model=MemoryCandidateRead, status_code=201)
+def create_manual_candidate(
+    pet_id: int,
+    payload: ManualMemoryCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_current_user),
+    _csrf=Depends(require_csrf),
+):
+    require_pet(db, pet_id, user)
+    candidate = create_manual_memory_candidate(db, pet_id, payload)
+    db.commit()
+    return candidate
+
+
 @router.get("/pets/{pet_id}/memory-candidates", response_model=list[MemoryCandidateRead])
-def read_memory_candidates(pet_id: int, db: Session = Depends(get_db)):
-    require_pet(db, pet_id)
+def read_memory_candidates(pet_id: int, db: Session = Depends(get_db), user: User = Depends(require_current_user)):
+    require_pet(db, pet_id, user)
     return list_memory_candidates(db, pet_id)
 
 
 @router.get("/pets/{pet_id}/long-term-memory", response_model=list[MemoryCandidateRead])
-def read_long_term_memory(pet_id: int, db: Session = Depends(get_db)):
-    require_pet(db, pet_id)
+def read_long_term_memory(pet_id: int, db: Session = Depends(get_db), user: User = Depends(require_current_user)):
+    require_pet(db, pet_id, user)
     return list_long_term_memory(db, pet_id)
 
 
 @router.post("/memory-candidates/{candidate_id}/decisions", response_model=MemoryCandidateRead, status_code=201)
-def create_memory_decision(candidate_id: int, payload: MemoryDecisionCreate, db: Session = Depends(get_db)):
+def create_memory_decision(candidate_id: int, payload: MemoryDecisionCreate, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
+    require_memory_candidate(db, candidate_id, user)
     try:
         candidate = append_memory_decision(db, candidate_id, payload)
         db.commit()

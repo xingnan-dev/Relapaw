@@ -1,7 +1,7 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { createCompleteEpisode, listObservationPlans } from "../api";
 import { useCurrentPet } from "../state/CurrentPetContext";
-import type { DangerSignal, ObservationPlan } from "../types";
+import type { BehaviorCategory, DangerSignal, MeasurementUnit, ObservationPlan } from "../types";
 import { JournalSticker, PetBotanicalSketch } from "../components/brand";
 
 const dangerOptions: Array<{ value: DangerSignal; label: string }> = [
@@ -21,12 +21,15 @@ function localDateTimeValue() {
   return now.toISOString().slice(0, 16);
 }
 
-export function Understand({ onSaved }: { onSaved: (episodeId: number) => void }) {
+export function Understand({ onSaved, onDirtyChange = () => undefined }: { onSaved: (episodeId: number) => void; onDirtyChange?: (dirty: boolean) => void }) {
   const { pet } = useCurrentPet();
   const [happenedAt, setHappenedAt] = useState(localDateTimeValue);
   const [episodeType, setEpisodeType] = useState("behavior_change");
   const [rawInput, setRawInput] = useState("");
   const [observation, setObservation] = useState("");
+  const [behaviorCategory, setBehaviorCategory] = useState<BehaviorCategory>("ACTIVITY");
+  const [measuredValue, setMeasuredValue] = useState("");
+  const [measurementUnit, setMeasurementUnit] = useState<MeasurementUnit>("seconds");
   const [interpretation, setInterpretation] = useState("");
   const [location, setLocation] = useState("");
   const [triggerContext, setTriggerContext] = useState("");
@@ -42,6 +45,11 @@ export function Understand({ onSaved }: { onSaved: (episodeId: number) => void }
   const [planState, setPlanState] = useState<"loading" | "ready" | "error">("loading");
   const [planId, setPlanId] = useState("");
   const [activeStep, setActiveStep] = useState<RecordStep>("record-input");
+  useEffect(() => {
+    const dirty = Boolean(rawInput || observation || measuredValue || interpretation || location || triggerContext || durationMinutes || frequency || intensity || urgent || otherConcern);
+    onDirtyChange(dirty);
+    return () => onDirtyChange(false);
+  }, [rawInput, observation, measuredValue, interpretation, location, triggerContext, durationMinutes, frequency, intensity, urgent, otherConcern, onDirtyChange]);
   const loadPlans = useCallback(async () => {
     if (!pet) return;
     setPlanState("loading");
@@ -95,7 +103,17 @@ export function Understand({ onSaved }: { onSaved: (episodeId: number) => void }
         ...(location.trim() ? { location: location.trim() } : {}),
         ...(triggerContext.trim() ? { trigger_context: triggerContext.trim() } : {}),
         ...(planId ? { plan_id: Number(planId) } : {}),
-        observations: [{ behavior_type: episodeType, description: observation.trim(), source_type: "owner_direct" }],
+        observations: [{
+          behavior_type: episodeType,
+          standardized_category: behaviorCategory,
+          description: observation.trim(),
+          source_type: "owner_direct",
+          ...(measuredValue ? {
+            measured_value: Number(measuredValue),
+            unit: measurementUnit,
+            standardized_unit: measurementUnit,
+          } : {}),
+        }],
         owner_interpretations: interpretation.trim() ? [{ interpretation: interpretation.trim() }] : [],
         safety_check: {
           result: urgent ? "ESCALATE_TO_VET" : "NORMAL",
@@ -138,6 +156,10 @@ export function Understand({ onSaved }: { onSaved: (episodeId: number) => void }
           <label className="lens-card"><JournalSticker name="spiral" /><strong>发生了什么</strong><span>只记录可以观察、听到或计量的事实</span><textarea rows={4} aria-label="发生了什么" value={observation} onChange={(event) => setObservation(event.target.value)} /></label>
           <label className="lens-card interpretation"><JournalSticker name="bow" /><strong>你的理解</strong><span>这是你的想法，不会被当成客观事实</span><textarea rows={4} aria-label="你的理解" value={interpretation} onChange={(event) => setInterpretation(event.target.value)} /></label>
         </div>
+        <fieldset className="form-section"><legend>可比较标签（可选计量）</legend><p>类别和标准单位用于跨记录比较；你的原始描述不会被替换。</p>
+          <label>行为类别<select aria-label="行为类别" value={behaviorCategory} onChange={(event) => setBehaviorCategory(event.target.value as BehaviorCategory)}><option value="ACTIVITY">活动</option><option value="FEEDING">饮食</option><option value="RESTING">休息</option><option value="SOCIAL">社交</option><option value="ELIMINATION">排泄</option><option value="VOCALIZATION">发声</option><option value="GROOMING">梳理</option><option value="MOBILITY">行动能力</option><option value="OTHER">其他</option></select></label>
+          <div className="form-pair"><label>计量值<input aria-label="计量值" type="number" step="any" value={measuredValue} onChange={(event) => setMeasuredValue(event.target.value)} /></label><label>标准单位<select aria-label="标准单位" value={measurementUnit} disabled={!measuredValue} onChange={(event) => setMeasurementUnit(event.target.value as MeasurementUnit)}><option value="seconds">秒</option><option value="minutes">分钟</option><option value="count">次数</option><option value="meters">米</option><option value="grams">克</option><option value="milliliters">毫升</option></select></label></div>
+        </fieldset>
 
         <fieldset className="form-section journal-sheet journal-sheet--context"><legend>当时的背景（可选）</legend>
           <label>关联观察计划<select aria-label="关联观察计划" value={planId} disabled={planState === "loading"} onChange={(event) => setPlanId(event.target.value)}><option value="">{planState === "loading" ? "正在读取计划…" : "不关联计划"}</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.goal}</option>)}</select></label>

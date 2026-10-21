@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.domain.enums import MemoryDecisionType
 from app.models.entities import AnalysisRun, Claim, MemoryCandidate, MemoryDecision
-from app.schemas.memory import MemoryDecisionCreate
+from app.schemas.memory import ManualMemoryCreate, MemoryDecisionCreate
 
 
 class MemoryError(Exception):
@@ -88,6 +88,7 @@ def materialize_memory_candidate(db: Session, claim_id: int) -> MemoryCandidate:
     candidate = MemoryCandidate(
         pet_id=run.episode.pet_id,
         claim_id=claim.id,
+        source_type="CLAIM",
         claim_snapshot={
             "claim_type": claim.claim_type,
             "statement": claim.statement,
@@ -120,6 +121,26 @@ def materialize_memory_candidate(db: Session, claim_id: int) -> MemoryCandidate:
             "analysis_run_id": run.id,
         },
         source_episode_updated_at=run.source_episode_updated_at,
+    )
+    db.add(candidate)
+    db.flush()
+    return get_memory_candidate(db, candidate.id)  # type: ignore[return-value]
+
+
+def create_manual_memory_candidate(db: Session, pet_id: int, payload: ManualMemoryCreate) -> MemoryCandidate:
+    candidate = MemoryCandidate(
+        pet_id=pet_id,
+        claim_id=None,
+        source_type="MANUAL",
+        claim_snapshot={
+            "claim_type": payload.category,
+            "statement": payload.statement,
+            "confidence_label": "USER_STATED",
+        },
+        evidence_snapshot=[],
+        uncertainty_snapshot=[],
+        model_snapshot={"source": "manual", "model_provider": "none"},
+        source_episode_updated_at=None,
     )
     db.add(candidate)
     db.flush()

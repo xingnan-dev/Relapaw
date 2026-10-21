@@ -146,13 +146,19 @@ def test_cancel_and_missing_follow_up_errors(client, pet):
     assert missing.json()["error"]["code"] == "FOLLOW_UP_NOT_FOUND"
 
 
-def test_source_and_result_episode_deletion_is_blocked(client, pet):
+def test_source_and_result_episode_deletion_redacts_and_preserves_lifecycle_integrity(client, pet):
     source = create_episode(client, pet["id"])
     follow_up = schedule(client, source["id"])
     source_delete = client.delete(f"/api/v1/episodes/{source['id']}")
-    assert source_delete.status_code == 409
-    assert source_delete.json()["error"]["code"] == "EPISODE_HAS_FOLLOW_UPS"
-    result = client.post(f"/api/v1/follow-ups/{follow_up['id']}/complete", json=complete_payload()).json()
+    assert source_delete.status_code == 204
+    assert client.get(f"/api/v1/episodes/{source['id']}").status_code == 404
+    cancelled = client.post(f"/api/v1/follow-ups/{follow_up['id']}/complete", json=complete_payload())
+    assert cancelled.status_code == 409
+    assert cancelled.json()["error"]["code"] == "FOLLOW_UP_CANCELLED"
+
+    active_source = create_episode(client, pet["id"])
+    completed = schedule(client, active_source["id"])
+    result = client.post(f"/api/v1/follow-ups/{completed['id']}/complete", json=complete_payload()).json()
     result_delete = client.delete(f"/api/v1/episodes/{result['id']}")
-    assert result_delete.status_code == 409
-    assert result_delete.json()["error"]["code"] == "EPISODE_HAS_FOLLOW_UPS"
+    assert result_delete.status_code == 204
+    assert client.get(f"/api/v1/episodes/{result['id']}").status_code == 404

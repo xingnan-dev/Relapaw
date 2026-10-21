@@ -102,23 +102,18 @@ def test_edit_preserves_old_value_snapshot_and_recompute_creates_new_lineage(cli
     assert new_measured["observation_id"] is not None
 
 
-def test_deleting_baseline_only_episode_keeps_snapshot_and_nulls_source_links(client, pet):
+def test_deleting_baseline_episode_removes_derived_snapshot_and_recomputes_empty(client, pet):
     episode = complete_episode(client, pet["id"], 8, 3)
     snapshot = recompute(client, pet["id"]).json()
 
     deletion = client.delete(f"/api/v1/episodes/{episode['id']}")
 
     assert deletion.status_code == 204
-    old = client.get(f"/api/v1/baseline-snapshots/{snapshot['id']}")
-    assert old.status_code == 200
-    body = old.json()
-    assert body["is_stale"] is True
-    assert body["evidences"]
-    assert all(item["episode_id"] is None for item in body["evidences"])
-    assert all(item["observation_id"] is None for item in body["evidences"])
-    measured = next(item for item in body["evidences"] if item["field_path"] == "measured_value")
-    assert measured["value_snapshot"] == 3.0
-    assert measured["source_snapshot"]["unit"] == "seconds"
+    assert client.get(f"/api/v1/baseline-snapshots/{snapshot['id']}").status_code == 404
+    refreshed = recompute(client, pet["id"]).json()
+    assert refreshed["status"] == "EMPTY"
+    assert refreshed["sample_count"] == 0
+    assert refreshed["evidences"] == []
 
 
 def test_new_relevant_episode_makes_old_snapshot_stale_but_future_episode_does_not(client, pet):

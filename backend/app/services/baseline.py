@@ -27,6 +27,8 @@ class ObservationValue:
     measured_value: float | None
     unit: str | None
     updated_at: datetime
+    standardized_category: str | None = None
+    standardized_unit: str | None = None
 
 
 @dataclass(frozen=True)
@@ -97,8 +99,10 @@ def source_fingerprint(pet_id: int, sources: list[EpisodeSource]) -> str:
                     {
                         "id": item.id,
                         "behavior_type": item.behavior_type,
+                        "standardized_category": item.standardized_category,
                         "measured_value": item.measured_value,
                         "unit": item.unit,
+                        "standardized_unit": item.standardized_unit,
                         "updated_at": utc(item.updated_at).isoformat(),
                     }
                     for item in sorted(source.observations, key=lambda value: value.id)
@@ -190,9 +194,11 @@ def calculate_baseline(window: str, as_of: datetime, sources: list[EpisodeSource
                     target.setdefault((field_name, None, unit), []).append(number)
             for observation in source.observations:
                 number = _finite_number(observation.measured_value)
-                if number is not None and observation.unit:
+                comparable_category = observation.standardized_category or observation.behavior_type
+                comparable_unit = observation.standardized_unit or observation.unit
+                if number is not None and comparable_unit:
                     target.setdefault(
-                        ("measured_value", observation.behavior_type, observation.unit), []
+                        ("measured_value", comparable_category, comparable_unit), []
                     ).append(number)
 
     collect(grouped, current)
@@ -302,19 +308,23 @@ def build_lineage(window: str, as_of: datetime, sources: list[EpisodeSource]) ->
                 ))
         for observation in source.observations:
             number = _finite_number(observation.measured_value)
-            if number is not None and observation.unit:
+            comparable_category = observation.standardized_category or observation.behavior_type
+            comparable_unit = observation.standardized_unit or observation.unit
+            if number is not None and comparable_unit:
                 items.append(LineageItem(
                     episode_id=source.id,
                     observation_id=observation.id,
                     source_type="OBSERVATION",
                     window_segment=segment,
-                    metric_key=f"measured_value|{observation.behavior_type}|{observation.unit}",
+                    metric_key=f"measured_value|{comparable_category}|{comparable_unit}",
                     field_path="measured_value",
                     value_snapshot=number,
                     source_snapshot={
                         "episode_type": source.episode_type,
                         "behavior_type": observation.behavior_type,
                         "unit": observation.unit,
+                        **({"standardized_category": observation.standardized_category} if observation.standardized_category else {}),
+                        **({"standardized_unit": observation.standardized_unit} if observation.standardized_unit else {}),
                     },
                     observed_at=happened_at,
                     source_updated_at=utc(observation.updated_at),
@@ -346,7 +356,11 @@ def load_sources(db: Session, pet_id: int, window: str, as_of: datetime) -> list
     earliest = comparison_start if comparison_start is not None else window_start
     statement = (
         select(Episode)
-        .where(Episode.pet_id == pet_id, Episode.happened_at <= window_end)
+        .where(
+            Episode.pet_id == pet_id,
+            Episode.happened_at <= window_end,
+            Episode.deleted_at.is_(None),
+        )
         .options(selectinload(Episode.observations))
         .order_by(Episode.id)
     )
@@ -366,8 +380,10 @@ def load_sources(db: Session, pet_id: int, window: str, as_of: datetime) -> list
                 ObservationValue(
                     id=item.id,
                     behavior_type=item.behavior_type,
+                    standardized_category=item.standardized_category,
                     measured_value=item.measured_value,
                     unit=item.unit,
+                    standardized_unit=item.standardized_unit,
                     updated_at=item.updated_at,
                 )
                 for item in episode.observations

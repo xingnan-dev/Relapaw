@@ -9,7 +9,8 @@ import { Today } from "./pages/Today";
 import { Understand } from "./pages/Understand";
 import { Us } from "./pages/Us";
 import { BrandAtmosphere, BrandMark, NavIcon, type NavIconName } from "./components/brand";
-import { useCapabilities } from "./state/CapabilitiesContext";
+import { CapabilitiesProvider, useCapabilities } from "./state/CapabilitiesContext";
+import { useAuth } from "./state/AuthContext";
 
 const tabs = ["Today", "Understand", "Timeline", "Us"] as const;
 type Tab = (typeof tabs)[number];
@@ -38,6 +39,8 @@ function AppFlow() {
 
 function MainShell({ onAddPet }: { onAddPet: () => void }) {
   const { capabilities } = useCapabilities();
+  const { signOut } = useAuth();
+  const { pet, pets, setCurrentPet } = useCurrentPet();
   const [active, setActive] = useState<Tab>("Today");
   const pageRef = useRef<HTMLElement>(null);
   const [showDailyOpening, setShowDailyOpening] = useState(() => {
@@ -46,6 +49,10 @@ function MainShell({ onAddPet }: { onAddPet: () => void }) {
   });
   const [targetEpisodeId, setTargetEpisodeId] = useState<number | null>(null);
   const [targetUsMemory, setTargetUsMemory] = useState(false);
+  const [recordDraftDirty, setRecordDraftDirty] = useState(false);
+  const [signOutBusy, setSignOutBusy] = useState(false);
+  const [signOutError, setSignOutError] = useState("");
+  useEffect(() => { setTargetEpisodeId(null); setTargetUsMemory(false); }, [pet?.id]);
   useLayoutEffect(() => {
     const page = pageRef.current;
     if (page && typeof page.scrollTo === "function") page.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -55,7 +62,7 @@ function MainShell({ onAddPet }: { onAddPet: () => void }) {
   const openMemory = () => { setTargetUsMemory(true); setActive("Us"); };
   const pages = {
     Today: <Today onAddPet={onAddPet} onUnderstand={() => setActive("Understand")} onOpenEpisode={openEpisode} />,
-    Understand: <Understand onSaved={openEpisode} />,
+    Understand: <Understand onSaved={openEpisode} onDirtyChange={setRecordDraftDirty} />,
     Timeline: <Timeline initialEpisodeId={targetEpisodeId} onInitialEpisodeOpened={() => setTargetEpisodeId(null)} onOpenMemory={openMemory} />,
     Us: <Us onAddPet={onAddPet} initialSection={targetUsMemory ? "memory" : null} onInitialSectionOpened={() => setTargetUsMemory(false)} />,
   };
@@ -70,9 +77,23 @@ function MainShell({ onAddPet }: { onAddPet: () => void }) {
       <header className="app-header">
         <div className="brand-lockup"><BrandMark/><div><h1>Relapaw</h1><p>Beyond the Paw. The Bond.</p></div></div>
         <p className="brand-promise">先看见发生了什么，再慢慢理解彼此。</p>
+        {pets.length > 0 && <label className="pet-switcher">当前宠物
+          <select aria-label="当前宠物" value={pet?.id ?? ""} onChange={(event) => {
+            const next = pets.find((item) => item.id === Number(event.target.value));
+            if (!next || next.id === pet?.id) return;
+            if (recordDraftDirty && !window.confirm("切换宠物会丢弃当前未保存的记录草稿，仍要切换吗？")) return;
+            setRecordDraftDirty(false);
+            setCurrentPet(next);
+          }}>{pets.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select>
+        </label>}
+        <button type="button" className="text-button" disabled={signOutBusy} onClick={() => {
+          setSignOutBusy(true); setSignOutError("");
+          void signOut().catch(() => setSignOutError("退出失败，请检查网络后重试。")).finally(() => setSignOutBusy(false));
+        }}>{signOutBusy ? "正在退出…" : "安全退出"}</button>
+        {signOutError && <p role="alert">{signOutError}</p>}
       </header>
       {capabilities.synthetic_data && <p className="demo-data-banner" role="status">合成演示数据 · {capabilities.dataset_version ?? "数据集待验证"}</p>}
-      <main ref={pageRef} className="page-transition" key={active}>{pages[active]}</main>
+      <main ref={pageRef} className="page-transition" key={`${active}:${pet?.id ?? "none"}`}>{pages[active]}</main>
       <nav className="bottom-nav" aria-label="Primary navigation">
         <p className="nav-label">RELAPAW</p>
         {tabs.map((tab) => <button key={tab} type="button" data-nav={tab.toLowerCase()} aria-label={tab} aria-current={active === tab ? "page" : undefined} onClick={() => setActive(tab)}>
@@ -95,5 +116,5 @@ function MainShell({ onAddPet }: { onAddPet: () => void }) {
 }
 
 export default function App() {
-  return <CurrentPetProvider><AppFlow /></CurrentPetProvider>;
+  return <CapabilitiesProvider><CurrentPetProvider><AppFlow /></CurrentPetProvider></CapabilitiesProvider>;
 }

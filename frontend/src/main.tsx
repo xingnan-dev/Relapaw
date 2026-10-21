@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
-import { CapabilitiesProvider } from "./state/CapabilitiesContext";
+import { AuthProvider } from "./state/AuthContext";
 import "./styles.css";
 
 async function loadRoot() {
@@ -24,6 +24,6 @@ async function loadRoot() {
 
 void loadRoot().then((Root) => {
   ReactDOM.createRoot(document.getElementById("root")!).render(
-    <React.StrictMode><CapabilitiesProvider><Root /></CapabilitiesProvider></React.StrictMode>,
+    <React.StrictMode><AuthProvider><Root /></AuthProvider></React.StrictMode>,
   );
 });

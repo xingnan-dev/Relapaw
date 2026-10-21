@@ -10,6 +10,9 @@ const safeDefaults: Capabilities = {
   dataset_version: null,
   ai_analysis_enabled: false,
   model_qualification: "NOT_QUALIFIED",
+  model_qualification_id: null,
+  medical_knowledge_version: "medical-safety/v1",
+  medical_review_status: "PENDING",
 };
 
 interface CapabilitiesValue {
@@ -34,7 +37,10 @@ export function CapabilitiesProvider({ children }: { children: ReactNode }) {
     setStatus("loading");
     getCapabilities().then((result) => {
       if (!active) return;
-      setCapabilities(result);
+      setCapabilities({
+        ...result,
+        ai_analysis_enabled: result.ai_analysis_enabled && result.model_qualification === "QUALIFIED",
+      });
       setStatus("ready");
     }).catch(() => {
       if (!active) return;

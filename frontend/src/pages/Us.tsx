@@ -2,12 +2,16 @@ import { useEffect, useState } from "react";
 import { useCurrentPet } from "../state/CurrentPetContext";
 import { MemoryBaselinePanel } from "../components/MemoryBaselinePanel";
 import { JournalSticker, PetBotanicalSketch } from "../components/brand";
+import { downloadAccountExport, requestAccountDeletion } from "../api";
 
 type UsPanel = "profile" | "principles" | "privacy" | null;
 
 export function Us({ onAddPet, initialSection = null, onInitialSectionOpened = () => undefined }: { onAddPet: () => void; initialSection?: "memory" | null; onInitialSectionOpened?: () => void }) {
   const { pet } = useCurrentPet();
   const [panel, setPanel] = useState<UsPanel>(null);
+  const [privacyStatus, setPrivacyStatus] = useState<string | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
   useEffect(() => {
     if (initialSection !== "memory") return;
     requestAnimationFrame(() => document.getElementById("memory-title")?.scrollIntoView?.({ behavior: "smooth", block: "start" }));
@@ -30,7 +34,17 @@ export function Us({ onAddPet, initialSection = null, onInitialSectionOpened = (
         </section>
         <section className={`card us-disclosure-card us-principle-card privacy-card${panel === "privacy" ? " is-expanded" : ""}`}>
           <button type="button" className="us-disclosure-trigger" aria-expanded={panel === "privacy"} aria-controls="us-privacy-detail" onClick={() => togglePanel("privacy")}><span><span className="eyebrow">03 · 由你决定保留</span><strong>数据与隐私</strong><small>长期记忆由你决定纳入，也可以随时撤回</small></span><b aria-hidden="true">⌄</b></button>
-          {panel === "privacy" && <div id="us-privacy-detail" className="us-disclosure-content"><JournalSticker name="star" /><ul><li>普通记录不会自动成为长期记忆。</li><li>候选内容只有在你确认后才会纳入。</li><li>撤回长期记忆不会改写原始记录与事实来源。</li></ul></div>}
+          {panel === "privacy" && <div id="us-privacy-detail" className="us-disclosure-content"><JournalSticker name="star" /><ul><li>普通记录不会自动成为长期记忆。</li><li>候选内容只有在你确认后才会纳入。</li><li>撤回长期记忆不会改写原始记录与事实来源。</li></ul>
+            <div className="privacy-actions"><button type="button" onClick={() => void downloadAccountExport().then(() => setPrivacyStatus("数据副本已开始下载。")).catch(() => setPrivacyStatus("下载失败，请稍后重试。"))}>下载我的数据</button>
+            <label>输入 DELETE MY ACCOUNT 以确认<input value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} /></label>
+            <button type="button" disabled={deleteConfirmation !== "DELETE MY ACCOUNT" || deleteBusy} onClick={() => {
+              setDeleteBusy(true); setPrivacyStatus(null);
+              void requestAccountDeletion().then(() => window.location.reload()).catch(() => {
+                setPrivacyStatus("删除请求失败，请稍后重试。"); setDeleteBusy(false);
+              });
+            }}>{deleteBusy ? "正在提交…" : "请求删除账户"}</button></div>
+            {privacyStatus && <p role="status">{privacyStatus}</p>}
+          </div>}
         </section>
       </div>
     </section>

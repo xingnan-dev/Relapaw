@@ -53,6 +53,6 @@ describe("CapabilitiesProvider", () => {
     expect(screen.getByText("ai-off")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "retry" }));
     expect(await screen.findByText("ready")).toBeInTheDocument();
-    expect(screen.getByText("ai-on")).toBeInTheDocument();
+    expect(screen.getByText("ai-off")).toBeInTheDocument();
   });
 });

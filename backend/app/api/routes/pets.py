@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_pet
+from app.api.deps import require_current_user, require_csrf, require_pet
 from app.db.session import get_db
-from app.models import Pet
+from app.models import Pet, User
 from app.api.errors import APIError
 from app.schemas.episode import TimelinePage
 from app.schemas.pet import PetCreate, PetRead, PetUpdate
@@ -16,8 +16,8 @@ router = APIRouter(prefix="/pets", tags=["pets"])
 
 
 @router.post("", response_model=PetRead, status_code=201)
-def create_pet(payload: PetCreate, db: Session = Depends(get_db)):
-    pet = Pet(**payload.model_dump())
+def create_pet(payload: PetCreate, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
+    pet = Pet(owner_user_id=user.id, **payload.model_dump())
     db.add(pet)
     db.commit()
     db.refresh(pet)
@@ -25,18 +25,18 @@ def create_pet(payload: PetCreate, db: Session = Depends(get_db)):
 
 
 @router.get("", response_model=list[PetRead])
-def list_pets(db: Session = Depends(get_db)):
-    return list(db.scalars(select(Pet).order_by(Pet.created_at, Pet.id)).all())
+def list_pets(db: Session = Depends(get_db), user: User = Depends(require_current_user)):
+    return list(db.scalars(select(Pet).where(Pet.owner_user_id == user.id).order_by(Pet.created_at, Pet.id)).all())
 
 
 @router.get("/{pet_id}", response_model=PetRead)
-def get_pet(pet_id: int, db: Session = Depends(get_db)):
-    return require_pet(db, pet_id)
+def get_pet(pet_id: int, db: Session = Depends(get_db), user: User = Depends(require_current_user)):
+    return require_pet(db, pet_id, user)
 
 
 @router.patch("/{pet_id}", response_model=PetRead)
-def update_pet(pet_id: int, payload: PetUpdate, db: Session = Depends(get_db)):
-    pet = require_pet(db, pet_id)
+def update_pet(pet_id: int, payload: PetUpdate, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
+    pet = require_pet(db, pet_id, user)
     data = payload.model_dump(exclude_unset=True)
     effective_birth_date = data.get("birth_date", pet.birth_date)
     effective_approximate_age = data.get("approximate_age", pet.approximate_age)
@@ -59,8 +59,9 @@ def pet_timeline(
     episode_type: str | None = Query(default=None, min_length=1, max_length=100),
     plan_id: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
+    user: User = Depends(require_current_user),
 ):
-    require_pet(db, pet_id)
+    require_pet(db, pet_id, user)
     try:
         from_at = require_aware_utc(from_at)
         to_at = require_aware_utc(to_at)

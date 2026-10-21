@@ -1,14 +1,44 @@
 services:
-  backend:
-    build: ./backend
-    profiles: ["future"]
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: relapaw
+      POSTGRES_USER: relapaw
+      POSTGRES_PASSWORD: ${RELAPAW_DB_PASSWORD:?set RELAPAW_DB_PASSWORD}
+    volumes:
+      - relapaw-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U relapaw -d relapaw"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      RELAPAW_ENV: ${RELAPAW_ENV:?set RELAPAW_ENV to staging or production}
+      RELAPAW_DEPLOYMENT_VERSION: ${RELAPAW_DEPLOYMENT_VERSION:?set RELAPAW_DEPLOYMENT_VERSION}
+      RELAPAW_DATABASE_URL: postgresql+psycopg://relapaw:${RELAPAW_DB_PASSWORD}@db/relapaw
+      RELAPAW_STATIC_DIR: /frontend/dist
+      RELAPAW_CORS_ORIGINS: ${RELAPAW_CORS_ORIGINS:?set explicit HTTPS JSON origins}
+      RELAPAW_SESSION_PEPPER: ${RELAPAW_SESSION_PEPPER:?set a 32+ character secret}
+      RELAPAW_TERMS_VERSION: ${RELAPAW_TERMS_VERSION:?set approved Terms version}
+      RELAPAW_PRIVACY_VERSION: ${RELAPAW_PRIVACY_VERSION:?set approved Privacy version}
+      RELAPAW_LEGAL_DOCUMENTS_APPROVED: ${RELAPAW_LEGAL_DOCUMENTS_APPROVED:?set legal approval status}
+      RELAPAW_MEDICAL_KNOWLEDGE_VERSION: ${RELAPAW_MEDICAL_KNOWLEDGE_VERSION:?set reviewed medical manifest version}
+      RELAPAW_MEDICAL_REVIEW_STATUS: ${RELAPAW_MEDICAL_REVIEW_STATUS:?set veterinarian review status}
     ports:
       - "8000:8000"
-  frontend:
-    build: ./frontend
-    profiles: ["future"]
-    ports:
-      - "5173:5173"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=2)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
-# Phase 0 placeholder only. Dockerfiles and production deployment are intentionally deferred.
-
+volumes:
+  relapaw-db:
