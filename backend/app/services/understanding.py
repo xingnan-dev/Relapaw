@@ -128,11 +128,18 @@ def _new_run(episode: Episode, payload: AnalysisRunCreate, adapter: TextUndersta
 
 
 def _lock_run_and_live_episode(db: Session, run_id: int, episode_id: int) -> tuple[AnalysisRun, Episode]:
-    run = db.scalar(select(AnalysisRun).where(AnalysisRun.id == run_id).with_for_update())
     episode = db.scalar(
         select(Episode).where(Episode.id == episode_id, Episode.deleted_at.is_(None)).with_for_update()
     )
-    if run is None or episode is None:
+    if episode is None:
+        db.rollback()
+        raise AnalysisExecutionError(
+            "ANALYSIS_SOURCE_DELETED",
+            "The source Episode was deleted while analysis was running; no result was saved",
+            409,
+        )
+    run = db.scalar(select(AnalysisRun).where(AnalysisRun.id == run_id).with_for_update())
+    if run is None:
         db.rollback()
         raise AnalysisExecutionError(
             "ANALYSIS_SOURCE_DELETED",

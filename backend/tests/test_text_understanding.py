@@ -1,10 +1,12 @@
 import pytest
+from types import SimpleNamespace
 
 import app.services.understanding as understanding_service
 from app.main import app
 from app.api.routes.capabilities import get_ai_enabled
 from app.schemas.analysis import AdapterDescriptor
 from app.services.understanding_adapter import AdapterError, DisabledAdapter, get_text_understanding_adapter
+from app.models import AnalysisRun, Episode
 
 
 def complete_payload(pet_id: int, *, safety_result="NORMAL") -> dict:
@@ -74,6 +76,26 @@ def create_episode(client, pet_id: int, *, safety_result="NORMAL") -> dict:
 def use_adapter(adapter):
     app.dependency_overrides[get_text_understanding_adapter] = lambda: adapter
     app.dependency_overrides[get_ai_enabled] = lambda: True
+
+
+def test_analysis_completion_locks_episode_before_run_to_match_delete_order():
+    episode = SimpleNamespace(id=7)
+    run = SimpleNamespace(id=11)
+
+    class RecordingSession:
+        def __init__(self):
+            self.entities = []
+
+        def scalar(self, statement):
+            entity = statement.column_descriptions[0]["entity"]
+            self.entities.append(entity)
+            return episode if entity is Episode else run
+
+    db = RecordingSession()
+    locked_run, locked_episode = understanding_service._lock_run_and_live_episode(db, 11, 7)
+    assert db.entities == [Episode, AnalysisRun]
+    assert locked_run is run
+    assert locked_episode is episode
 
 
 def test_analysis_preserves_input_lenses_and_persists_traceability(client, pet):

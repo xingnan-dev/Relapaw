@@ -84,7 +84,15 @@ def delete_account(
     context: AuthContext = Depends(require_csrf),
     db: Session = Depends(get_db),
 ):
-    due = request_account_deletion(db, context.user, settings)
+    user = db.scalar(
+        select(User)
+        .where(User.id == context.user.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if user is None or user.status != "ACTIVE":
+        raise APIError(409, "ACCOUNT_DELETION_ALREADY_REQUESTED", "Account deletion is already pending")
+    due = request_account_deletion(db, user, settings)
     db.commit()
     response.delete_cookie(settings.session_cookie_name, secure=settings.secure_cookies, httponly=True, samesite="lax", path="/")
     return AccountDeletionRead(status="PENDING_DELETION", deletion_due_at=due)

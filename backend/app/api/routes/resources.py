@@ -43,7 +43,7 @@ def get_baseline(pet_id: int, db: Session = Depends(get_db), user: User = Depend
 
 @router.put("/pets/{pet_id}/baseline", response_model=PetBaselineRead)
 def upsert_baseline(pet_id: int, payload: PetBaselineUpsert, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
-    require_pet(db, pet_id, user)
+    require_pet(db, pet_id, user, for_update=True)
     baseline = db.scalar(select(PetBaseline).where(PetBaseline.pet_id == pet_id))
     if baseline is None:
         baseline = PetBaseline(pet_id=pet_id, **payload.model_dump())
@@ -64,7 +64,7 @@ def list_life_events(pet_id: int, db: Session = Depends(get_db), user: User = De
 
 @router.post("/pets/{pet_id}/life-events", response_model=LifeEventRead, status_code=201)
 def create_life_event(pet_id: int, payload: LifeEventCreate, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
-    require_pet(db, pet_id, user)
+    require_pet(db, pet_id, user, for_update=True)
     event = LifeEvent(pet_id=pet_id, **payload.model_dump())
     db.add(event)
     db.commit()
@@ -89,7 +89,7 @@ def get_observation_plan(plan_id: int, db: Session = Depends(get_db), user: User
 
 @router.post("/pets/{pet_id}/observation-plans", response_model=ObservationPlanRead, status_code=201)
 def create_observation_plan(pet_id: int, payload: ObservationPlanCreate, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
-    require_pet(db, pet_id, user)
+    require_pet(db, pet_id, user, for_update=True)
     data = payload.model_dump(exclude={"items"})
     plan = ObservationPlan(pet_id=pet_id, **data)
     db.add(plan)
@@ -106,7 +106,7 @@ def create_observation_plan(pet_id: int, payload: ObservationPlanCreate, db: Ses
 
 @router.patch("/observation-plans/{plan_id}", response_model=ObservationPlanRead)
 def update_observation_plan(plan_id: int, payload: ObservationPlanUpdate, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
-    plan = require_plan(db, plan_id, user)
+    plan = require_plan(db, plan_id, user, for_update=True)
     data = payload.model_dump(exclude_unset=True)
     if plan.status in {"COMPLETED", "CANCELLED"}:
         raise APIError(409, "OBSERVATION_PLAN_TERMINAL", "Completed or cancelled plans cannot be changed")
@@ -135,7 +135,7 @@ def list_veterinary_escalations(episode_id: int, db: Session = Depends(get_db), 
 
 @router.post("/episodes/{episode_id}/veterinary-escalations", response_model=VeterinaryEscalationRead, status_code=201)
 def create_veterinary_escalation(episode_id: int, payload: VeterinaryEscalationCreate, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
-    require_episode(db, episode_id, user)
+    require_episode(db, episode_id, user, for_update=True)
     if payload.status.value != "OPEN":
         raise APIError(409, "INVALID_VETERINARY_ESCALATION_TRANSITION", "Veterinary escalation must be created as OPEN")
     escalation = VeterinaryEscalation(episode_id=episode_id, **payload.model_dump(mode="json"))
@@ -147,7 +147,7 @@ def create_veterinary_escalation(episode_id: int, payload: VeterinaryEscalationC
 
 @router.patch("/veterinary-escalations/{escalation_id}", response_model=VeterinaryEscalationRead)
 def update_veterinary_escalation(escalation_id: int, payload: VeterinaryEscalationUpdate, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
-    escalation = require_escalation(db, escalation_id, user)
+    escalation = require_escalation(db, escalation_id, user, for_update=True)
     data = payload.model_dump(exclude_unset=True, mode="json")
     if escalation.status == "CLOSED":
         raise APIError(409, "VETERINARY_ESCALATION_CLOSED", "Closed veterinary escalations cannot be changed")

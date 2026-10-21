@@ -36,7 +36,7 @@ def get_pet(pet_id: int, db: Session = Depends(get_db), user: User = Depends(req
 
 @router.patch("/{pet_id}", response_model=PetRead)
 def update_pet(pet_id: int, payload: PetUpdate, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
-    pet = require_pet(db, pet_id, user)
+    pet = require_pet(db, pet_id, user, for_update=True)
     data = payload.model_dump(exclude_unset=True)
     effective_birth_date = data.get("birth_date", pet.birth_date)
     effective_approximate_age = data.get("approximate_age", pet.approximate_age)

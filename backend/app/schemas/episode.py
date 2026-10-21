@@ -20,8 +20,15 @@ class ObservationCreate(BaseModel):
 
     @model_validator(mode="after")
     def standardized_measurement_is_complete(self):
-        if self.standardized_unit is not None and self.measured_value is None:
-            raise ValueError("standardized_unit requires measured_value")
+        if self.standardized_unit is not None:
+            if self.measured_value is None:
+                raise ValueError("standardized_unit requires measured_value")
+            if self.unit is None or not self.unit.strip():
+                raise ValueError("standardized_unit requires unit")
+            if self.unit.strip().casefold() != self.standardized_unit.value:
+                raise ValueError(
+                    "standardized_unit must match unit unless measured_value is converted before submission"
+                )
         return self
 
 

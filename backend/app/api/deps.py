@@ -102,10 +102,13 @@ def require_episode(db: Session, episode_id: int, user: User, *, for_update: boo
     return episode
 
 
-def require_plan(db: Session, plan_id: int, user: User) -> ObservationPlan:
-    value = db.scalar(select(ObservationPlan).join(Pet).where(
+def require_plan(db: Session, plan_id: int, user: User, *, for_update: bool = False) -> ObservationPlan:
+    statement = select(ObservationPlan).join(Pet).where(
         ObservationPlan.id == plan_id, Pet.owner_user_id == user.id
-    ))
+    )
+    if for_update:
+        statement = statement.with_for_update()
+    value = db.scalar(statement)
     if value is None:
         raise APIError(404, "OBSERVATION_PLAN_NOT_FOUND", "Observation plan not found")
     return value
@@ -142,12 +145,22 @@ def require_follow_up(db: Session, follow_up_id: int, user: User, *, for_update:
     return value
 
 
-def require_escalation(db: Session, escalation_id: int, user: User) -> VeterinaryEscalation:
-    value = db.scalar(select(VeterinaryEscalation).join(Episode).join(Pet).where(
+def require_escalation(db: Session, escalation_id: int, user: User, *, for_update: bool = False) -> VeterinaryEscalation:
+    statement = select(VeterinaryEscalation).join(Episode).join(Pet).where(
         VeterinaryEscalation.id == escalation_id, Pet.owner_user_id == user.id
-    ))
+    )
+    value = db.scalar(statement)
     if value is None:
         raise APIError(404, "VETERINARY_ESCALATION_NOT_FOUND", "Veterinary escalation not found")
+    if for_update:
+        require_episode(db, value.episode_id, user, for_update=True)
+        value = db.scalar(
+            select(VeterinaryEscalation)
+            .where(VeterinaryEscalation.id == escalation_id)
+            .with_for_update()
+        )
+        if value is None:
+            raise APIError(404, "VETERINARY_ESCALATION_NOT_FOUND", "Veterinary escalation not found")
     return value
 
 

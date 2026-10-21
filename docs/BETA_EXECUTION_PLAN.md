@@ -1,9 +1,9 @@
 # Relapaw invited Beta execution plan
 
 Status: **ACTIVE**<br>
-Last updated: 2026-10-20<br>
+Last updated: 2026-10-21<br>
 Authoritative branch: `post-competition`<br>
-Starting commit: `5af287eb4f93e91ea4066c155a4a1c8a2b6783f1`
+Milestone commit: `da28a074890ed1d78764dc27577143c9876a75af`
 
 This file is the durable implementation plan for moving the local demo to an invited
 Beta. A checked box is not evidence by itself: every completed row must link to code,
@@ -51,7 +51,9 @@ an automated test, a command result, or an explicitly external review item in
 5. Pet is the tenant root. Every pet-derived resource is authorized through a query
    constrained by `Pet.owner_user_id`; nested cross-pet references are rejected.
 6. Existing demo rows are never silently assigned to a real user. Migration handling
-   for legacy demo data is explicit and environment-gated.
+   is an explicit, revision-pinned operator command that assigns only `DISABLED`
+   quarantine identities; it is never an application-startup action or real-account
+   assignment.
 
 ## Working protocol per stage
 

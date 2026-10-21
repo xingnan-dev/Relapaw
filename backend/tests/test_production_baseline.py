@@ -1,11 +1,15 @@
 import json
 import logging
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.demo.dataset_v1 import SCHEMA_REVISION
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
 def production_values(**overrides):
@@ -28,6 +32,23 @@ def production_values(**overrides):
 def test_production_requires_postgresql(database_url):
     with pytest.raises(ValidationError, match="PostgreSQL"):
         Settings(_env_file=None, **production_values(database_url=database_url))
+
+
+def test_compose_fixes_production_mode_and_requires_an_encoded_database_dsn():
+    compose = (REPOSITORY_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "RELAPAW_ENV: production" in compose
+    assert "RELAPAW_DATABASE_URL: ${RELAPAW_DATABASE_URL:" in compose
+    assert "${RELAPAW_DB_PASSWORD}@" not in compose
+
+
+def test_container_image_has_runtime_healthcheck_and_restrictive_build_context():
+    dockerfile = (REPOSITORY_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    dockerignore = (REPOSITORY_ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
+    assert "USER relapaw" in dockerfile
+    assert "HEALTHCHECK" in dockerfile
+    assert "http://127.0.0.1:8000/ready" in dockerfile
+    for excluded in ("**/.env.*", "**/*.db", "**/*.sqlite", "**/*.log", "**/__pycache__"):
+        assert excluded in dockerignore
 
 
 @pytest.mark.parametrize("origins", [[], ["http://beta.example"], ["https://localhost:8443"]])

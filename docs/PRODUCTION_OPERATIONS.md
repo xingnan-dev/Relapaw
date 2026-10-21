@@ -11,7 +11,17 @@ Status: implementation-ready; requires named operator, infrastructure and rehear
    approved legal versions and a veterinarian-approved in-repository medical manifest.
    Keep AI off unless the selected qualification ID exactly binds provider, model,
    base URL and prompt/input/output contracts in `model_qualification.py`.
-4. Run `alembic upgrade head` as a one-off migration job before shifting traffic.
+   Provide `RELAPAW_DATABASE_URL` through the deployment secret manager as an encoded
+   DSN. Validate Compose only with `docker compose config --quiet`; never print or
+   archive the rendered configuration because it contains the database credential.
+4. Run migrations as a one-off job before shifting traffic. For a fresh empty Beta
+   database, run `alembic upgrade head`. For an explicitly approved legacy demo
+   database, first take and verify a backup plus row counts, upgrade only to
+   `20261020_0009`, run
+   `python -m app.demo.assign_legacy_owner --allow-legacy-demo-data`, verify every
+   legacy row is assigned only to a `DISABLED` quarantine user, and then upgrade to
+   `head`. Stop on any unexpected count or non-disabled assignment. Never run this
+   helper automatically or use it to assign data to a real account.
 5. Require `/health` for process liveness and `/ready` for database connectivity plus
    exact schema revision. Never route Beta traffic while readiness is 503.
 6. Terminate TLS at a controlled ingress. If forwarded headers are required, configure

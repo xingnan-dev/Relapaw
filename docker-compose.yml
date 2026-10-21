@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:17-alpine
+    image: postgres:17.11-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
     environment:
       POSTGRES_DB: relapaw
       POSTGRES_USER: relapaw
@@ -21,9 +21,9 @@ services:
       - path: .env
         required: false
     environment:
-      RELAPAW_ENV: ${RELAPAW_ENV:?set RELAPAW_ENV to staging or production}
+      RELAPAW_ENV: production
       RELAPAW_DEPLOYMENT_VERSION: ${RELAPAW_DEPLOYMENT_VERSION:?set RELAPAW_DEPLOYMENT_VERSION}
-      RELAPAW_DATABASE_URL: postgresql+psycopg://relapaw:${RELAPAW_DB_PASSWORD}@db/relapaw
+      RELAPAW_DATABASE_URL: ${RELAPAW_DATABASE_URL:?set a URL-encoded PostgreSQL DSN}
       RELAPAW_STATIC_DIR: /frontend/dist
       RELAPAW_CORS_ORIGINS: ${RELAPAW_CORS_ORIGINS:?set explicit HTTPS JSON origins}
       RELAPAW_SESSION_PEPPER: ${RELAPAW_SESSION_PEPPER:?set a 32+ character secret}

@@ -9,7 +9,7 @@ from app.api.deps import AuthContext, require_auth_context, require_csrf
 from app.api.errors import APIError
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import IdentityInvitation, TermsAcceptance, UserSession
+from app.models import IdentityInvitation, TermsAcceptance, User, UserIdentity, UserSession
 from app.schemas.auth import ChallengeRequest, ChallengeVerify, CsrfRead, SessionRead
 from app.services.identity import IdentityVerificationError, LocalInviteIdentityAdapter
 from app.services.sessions import create_session, get_or_create_user, token_digest
@@ -49,6 +49,19 @@ def _clear_cookie(response: Response) -> None:
     )
 
 
+def _require_valid_locked_invitation(
+    invitation: IdentityInvitation | None, now: datetime
+) -> IdentityInvitation:
+    if invitation is None or invitation.status not in {"PENDING", "ACCEPTED"}:
+        raise APIError(401, "CHALLENGE_INVALID", "Challenge verification failed")
+    invitation_expiry = invitation.expires_at
+    if invitation_expiry is not None and invitation_expiry.tzinfo is None:
+        invitation_expiry = invitation_expiry.replace(tzinfo=UTC)
+    if invitation.status == "PENDING" and invitation_expiry is not None and invitation_expiry <= now:
+        raise APIError(401, "CHALLENGE_INVALID", "Challenge verification failed")
+    return invitation
+
+
 @router.post("/otp/request", status_code=202)
 def request_challenge(payload: ChallengeRequest, request: Request):
     if request.headers.get("origin") not in settings.cors_origins:
@@ -76,13 +89,63 @@ def verify_challenge(
         IdentityInvitation.subject == identity.subject,
         IdentityInvitation.status.in_(["PENDING", "ACCEPTED"]),
     ))
-    now = datetime.now(UTC)
-    invitation_expiry = invitation.expires_at if invitation is not None else None
-    if invitation_expiry is not None and invitation_expiry.tzinfo is None:
-        invitation_expiry = invitation_expiry.replace(tzinfo=UTC)
-    if invitation is None or (invitation_expiry is not None and invitation_expiry <= now):
+    if invitation is None:
         raise APIError(401, "CHALLENGE_INVALID", "Challenge verification failed")
-    user = get_or_create_user(db, identity)
+
+    known_user_id = invitation.accepted_user_id or db.scalar(select(UserIdentity.user_id).where(
+        UserIdentity.provider == identity.provider,
+        UserIdentity.subject == identity.subject,
+    ))
+    user = None
+    if known_user_id is not None:
+        # Account deletion/purge also starts with the User row. Keep returning-login
+        # lock order User -> Invitation so FK cleanup cannot deadlock with login.
+        user = db.scalar(
+            select(User).where(User.id == known_user_id).with_for_update().execution_options(populate_existing=True)
+        )
+        invitation = db.scalar(
+            select(IdentityInvitation)
+            .where(IdentityInvitation.id == invitation.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    else:
+        invitation = db.scalar(
+            select(IdentityInvitation)
+            .where(IdentityInvitation.id == invitation.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        # A concurrent first login may have accepted the invitation while this
+        # request waited. Release the invitation lock and restart in User-first order.
+        known_user_id = invitation.accepted_user_id if invitation is not None else None
+        if known_user_id is None:
+            known_user_id = db.scalar(select(UserIdentity.user_id).where(
+                UserIdentity.provider == identity.provider,
+                UserIdentity.subject == identity.subject,
+            ))
+        if known_user_id is not None:
+            invitation_id = invitation.id if invitation is not None else None
+            db.rollback()
+            user = db.scalar(
+                select(User).where(User.id == known_user_id).with_for_update().execution_options(populate_existing=True)
+            )
+            invitation = db.scalar(
+                select(IdentityInvitation)
+                .where(IdentityInvitation.id == invitation_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+    now = datetime.now(UTC)
+    invitation = _require_valid_locked_invitation(invitation, now)
+    if user is None:
+        user = get_or_create_user(db, identity)
+        db.flush()
+        user = db.scalar(
+            select(User).where(User.id == user.id).with_for_update().execution_options(populate_existing=True)
+        )
+    if user is None:
+        raise APIError(401, "CHALLENGE_INVALID", "Challenge verification failed")
     if user.status != "ACTIVE":
         raise APIError(401, "CHALLENGE_INVALID", "Challenge verification failed")
     # A successful login rotates all existing sessions for this identity.

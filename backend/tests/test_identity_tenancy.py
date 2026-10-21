@@ -15,7 +15,8 @@ from app.api.deps import require_auth_context, require_csrf, require_current_use
 from app.db.session import get_db
 from app.main import app
 from app.api.router import api_router
-from app.api.routes.auth import identity_adapter
+from app.api.routes.auth import _require_valid_locked_invitation, identity_adapter
+from app.api.errors import APIError
 from app.models import AnalysisRun, Claim, Episode, IdentityInvitation, MemoryCandidate, User, UserSession
 
 
@@ -130,6 +131,19 @@ def test_current_policy_consent_is_required_and_version_bound(auth_runtime):
     )
     assert accepted.status_code == 201
     assert client.get("/api/v1/pets").status_code == 200
+
+
+def test_locked_invitation_is_revalidated_after_waiting_for_concurrent_changes():
+    revoked = IdentityInvitation(
+        provider="local-invite",
+        subject="revoked-subject",
+        status="REVOKED",
+        accepted_user_id="user-that-was-previously-accepted",
+    )
+    with pytest.raises(APIError) as caught:
+        _require_valid_locked_invitation(revoked, datetime.now(UTC))
+    assert caught.value.status_code == 401
+    assert caught.value.code == "CHALLENGE_INVALID"
 
 
 def dependency_calls(route: APIRoute) -> set[object]:
@@ -256,6 +270,39 @@ def test_login_restore_rotation_logout_expiry_and_revocation(auth_runtime):
         "/api/v1/auth/otp/verify", headers={"Origin": ORIGIN},
         json={"email": "alice@example.test", "code": INVITE_CODE},
     ).status_code == 401
+
+
+def test_accepted_invitation_remains_valid_after_its_invitation_window(auth_runtime):
+    new_client, sessions = auth_runtime
+    first = new_client()
+    first_csrf = login(first, "alice@example.test")
+    assert first.post("/api/v1/auth/logout", headers=write_headers(first_csrf)).status_code == 204
+
+    subject = identity_adapter.subject_for("alice@example.test")
+    assert subject is not None
+    with sessions() as db:
+        invitation = db.scalar(select(IdentityInvitation).where(
+            IdentityInvitation.provider == "local-invite",
+            IdentityInvitation.subject == subject,
+        ))
+        assert invitation is not None
+        assert invitation.status == "ACCEPTED"
+        invitation.expires_at = datetime.now(UTC) - timedelta(days=1)
+        db.commit()
+
+    returning = new_client()
+    requested = returning.post(
+        "/api/v1/auth/otp/request",
+        headers={"Origin": ORIGIN},
+        json={"email": "alice@example.test"},
+    )
+    assert requested.status_code == 202
+    verified = returning.post(
+        "/api/v1/auth/otp/verify",
+        headers={"Origin": ORIGIN},
+        json={"email": "alice@example.test", "code": INVITE_CODE},
+    )
+    assert verified.status_code == 200
 
 
 def test_cookie_writes_require_bound_csrf_and_allowed_origin(auth_runtime):

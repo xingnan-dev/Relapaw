@@ -1,7 +1,7 @@
-import { createContext, useContext, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { acceptPrivacyConsent, ApiError, getAuthSession, getCsrfToken, getPrivacyNotice, logout, requestLoginChallenge, setCsrfToken, verifyLoginChallenge, type AuthSession } from "../api";
 
-type AuthStatus = "loading" | "anonymous" | "consent" | "authenticated" | "expired" | "error";
+type AuthStatus = "loading" | "anonymous" | "consent" | "authenticated" | "expired" | "bootstrap-error" | "error";
 
 interface AuthValue {
   session: AuthSession | null;
@@ -22,12 +22,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [attempt, setAttempt] = useState(0);
   const [preserveChildrenForConsent, setPreserveChildrenForConsent] = useState(false);
+  const [bootstrapBusy, setBootstrapBusy] = useState(false);
+  const bootstrapInFlight = useRef(false);
 
-  async function establish(next: AuthSession) {
-    const csrf = await getCsrfToken();
-    setCsrfToken(csrf.csrf_token);
+  async function establish(next: AuthSession, preserveChildren = false) {
+    if (bootstrapInFlight.current) return;
+    bootstrapInFlight.current = true;
+    setBootstrapBusy(true);
     setSession(next);
-    setStatus(next.consent_required ? "consent" : "authenticated");
+    if (preserveChildren) setPreserveChildrenForConsent(true);
+    try {
+      const csrf = await getCsrfToken();
+      setCsrfToken(csrf.csrf_token);
+      setStatus(next.consent_required ? "consent" : "authenticated");
+      if (!next.consent_required) setPreserveChildrenForConsent(false);
+    } catch {
+      setCsrfToken(null);
+      setStatus("bootstrap-error");
+    } finally {
+      bootstrapInFlight.current = false;
+      setBootstrapBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -86,29 +101,88 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   if (status === "loading") return <AuthContext.Provider value={value}><main className="auth-page"><p role="status">正在恢复安全会话…</p></main></AuthContext.Provider>;
   if (status === "error") return <AuthContext.Provider value={value}><main className="auth-page"><h1>暂时无法连接</h1><p role="alert">无法确认会话状态，请检查网络后重试。</p><button type="button" onClick={value.retry}>重试</button></main></AuthContext.Provider>;
-  if (status === "anonymous") return <AuthContext.Provider value={value}><LoginPage onAuthenticated={establish} /></AuthContext.Provider>;
-  const consentAccepted = () => {
-    void getAuthSession().then(establish).then(() => setPreserveChildrenForConsent(false)).catch(() => setStatus("error"));
+  if (status === "anonymous") return <AuthContext.Provider value={value}><LoginPage onAuthenticated={(next) => establish(next)} /></AuthContext.Provider>;
+  const retryBootstrap = async () => {
+    if (bootstrapInFlight.current) return;
+    bootstrapInFlight.current = true;
+    setBootstrapBusy(true);
+    try {
+      const next = await getAuthSession();
+      setSession(next);
+      const csrf = await getCsrfToken();
+      setCsrfToken(csrf.csrf_token);
+      setStatus(next.consent_required ? "consent" : "authenticated");
+      if (!next.consent_required) setPreserveChildrenForConsent(false);
+    } catch (caught) {
+      setCsrfToken(null);
+      if (caught instanceof ApiError && caught.status === 401) {
+        if (preserveChildrenForConsent) {
+          setStatus("expired");
+        } else {
+          setSession(null);
+          setStatus("anonymous");
+        }
+      } else {
+        setStatus("bootstrap-error");
+      }
+    } finally {
+      bootstrapInFlight.current = false;
+      setBootstrapBusy(false);
+    }
+  };
+  const consentAccepted = async () => {
+    await retryBootstrap();
   };
   if (status === "consent" && !preserveChildrenForConsent) return <AuthContext.Provider value={value}><ConsentPage onAccepted={consentAccepted} /></AuthContext.Provider>;
+  if (status === "bootstrap-error" && !preserveChildrenForConsent) return <AuthContext.Provider value={value}><BootstrapRecovery busy={bootstrapBusy} onRetry={retryBootstrap} /></AuthContext.Provider>;
   return <AuthContext.Provider value={value}>
-    <div hidden={status === "expired" || status === "consent"}>{children}</div>
-    {status === "expired" && <LoginPage expired onAuthenticated={establish} />}
+    <div hidden={status === "expired" || status === "consent" || status === "bootstrap-error"}>{children}</div>
+    {status === "expired" && <LoginPage expired onAuthenticated={(next) => establish(next, true)} />}
     {status === "consent" && <ConsentPage onAccepted={consentAccepted} />}
+    {status === "bootstrap-error" && <BootstrapRecovery busy={bootstrapBusy} onRetry={retryBootstrap} />}
   </AuthContext.Provider>;
 }
 
-function ConsentPage({ onAccepted }: { onAccepted: () => void }) {
+function BootstrapRecovery({ busy, onRetry }: { busy: boolean; onRetry: () => Promise<void> }) {
+  return <main className="auth-page"><section className="auth-card">
+    <h1>安全会话尚未就绪</h1>
+    <p role="alert">登录已经验证，但安全令牌初始化失败。你的本页输入仍保留，请重试。</p>
+    <button className="primary" type="button" disabled={busy} onClick={() => void onRetry()}>{busy ? "正在重试…" : "重试安全初始化"}</button>
+  </section></main>;
+}
+
+function ConsentPage({ onAccepted }: { onAccepted: () => Promise<void> }) {
   const [notice, setNotice] = useState<Awaited<ReturnType<typeof getPrivacyNotice>> | null>(null);
   const [adult, setAdult] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { getPrivacyNotice().then(setNotice).catch(() => setError("无法载入当前政策版本，请稍后重试。")); }, []);
+  async function loadNotice(message?: string) {
+    setNotice(null);
+    setAdult(false);
+    try {
+      const current = await getPrivacyNotice();
+      setNotice(current);
+      setError(message ?? null);
+    } catch {
+      setError("无法载入当前政策版本，请稍后重试。");
+    }
+  }
+  useEffect(() => { void loadNotice(); }, []);
   async function accept() {
     if (!notice || !adult) return;
     setBusy(true); setError(null);
-    try { await acceptPrivacyConsent(notice); onAccepted(); }
-    catch { setError("接受记录未能保存，请重试。若政策版本已更新，请刷新页面。" ); setBusy(false); }
+    try {
+      await acceptPrivacyConsent(notice);
+      await onAccepted();
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.code === "POLICY_VERSION_CHANGED") {
+        await loadNotice("政策版本已更新，请阅读并确认当前版本。");
+      } else {
+        setError("接受记录未能保存，请重试。");
+      }
+    } finally {
+      setBusy(false);
+    }
   }
   return <main className="auth-page"><section className="auth-card" aria-labelledby="consent-title">
     <p className="eyebrow">RELAPAW · PRIVACY</p><h1 id="consent-title">开始前，请确认数据约定</h1>
@@ -117,6 +191,7 @@ function ConsentPage({ onAccepted }: { onAccepted: () => void }) {
     <label><input type="checkbox" checked={adult} onChange={(event) => setAdult(event.target.checked)} /> 我确认自己是成年宠物主人，并接受当前版本的条款与隐私说明。</label>
     {error && <p role="alert">{error}</p>}
     <button className="primary" type="button" disabled={!notice || !adult || busy} onClick={() => void accept()}>{busy ? "正在保存…" : "接受并继续"}</button>
+    {!notice && <button type="button" disabled={busy} onClick={() => void loadNotice()}>重新载入政策</button>}
   </section></main>;
 }
 
