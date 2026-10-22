@@ -7,6 +7,12 @@ function json(data: unknown, ok = true, status = ok ? 200 : 500) {
   return Promise.resolve({ ok, status, json: () => Promise.resolve(data) });
 }
 
+function auxiliary(url: string) {
+  if (url.endsWith("/life-events")) return json([]);
+  if (url.includes("/timeline")) return json({ items: [], page: 1, page_size: 100, total: 0 });
+  return null;
+}
+
 const candidate: MemoryCandidate = {
   id: 4, pet_id: 7, claim_id: 71, source_type: "CLAIM", claim_snapshot: { claim_type: "POSSIBLE_EXPLANATION", statement: "一种经用户确认的可能解释。", confidence_label: "LOW" },
   evidence_snapshot: [], uncertainty_snapshot: [], model_snapshot: {}, source_episode_updated_at: "2026-10-11T08:00:00Z", created_at: "2026-10-11T08:00:00Z",
@@ -36,7 +42,7 @@ describe("memory and baseline closure", () => {
       if (url.endsWith("/memory-candidates/manual") && init?.method === "POST") { bodies.push(String(init.body)); return json(manual, true, 201); }
       if (url.endsWith("/memory-candidates")) return json([]);
       if (url.includes("baseline-snapshots/latest")) return json({ error: {} }, false, 404);
-      return json({}, false, 404);
+      return auxiliary(url) ?? json({}, false, 404);
     }));
     render(<MemoryBaselinePanel petId={7} />);
     fireEvent.change(screen.getByLabelText("记忆类别"), { target: { value: "COMFORT" } });
@@ -53,7 +59,7 @@ describe("memory and baseline closure", () => {
       if (url.endsWith("/baseline")) return json({ id: 2, pet_id: 7, social_behavior: { greeting: "calm" }, activity_pattern: null, feeding_pattern: null, resting_pattern: null, handling_preference: null, hiding_pattern: null });
       if (url.endsWith("/memory-candidates")) return json([candidate]);
       if (url.includes("baseline-snapshots/latest")) return json(snapshot);
-      return json({}, false, 404);
+      return auxiliary(url) ?? json({}, false, 404);
     }));
     render(<MemoryBaselinePanel petId={7} />);
     expect(await screen.findByText("人工档案 Baseline")).toBeInTheDocument();
@@ -76,7 +82,7 @@ describe("memory and baseline closure", () => {
         bodies.push(String(init.body)); decisions += 1;
         return decisions === 1 ? Promise.reject(new TypeError("offline")) : json({ ...candidate, state: "ACTIVE", decisions: [{ id: 1, candidate_id: 4, request_id: JSON.parse(bodies[0]).request_id, decision: "INCLUDE", note: null, created_at: "2026-10-12T00:01:00Z" }] }, true, 201);
       }
-      return json({}, false, 404);
+      return auxiliary(url) ?? json({}, false, 404);
     }));
     render(<MemoryBaselinePanel petId={7} />);
     const card = (await screen.findByText(/一种经用户确认/)).closest<HTMLElement>(".memory-card")!;
@@ -100,7 +106,7 @@ describe("memory and baseline closure", () => {
         current = { ...current, state: decision === "WITHDRAW" ? "WITHDRAWN" : "ACTIVE", decisions: [...current.decisions, { id: current.decisions.length + 1, candidate_id: 4, request_id: "next", decision, note: null, created_at: "2026-10-12T00:02:00Z" }] } as typeof current;
         return json(current, true, 201);
       }
-      return json({}, false, 404);
+      return auxiliary(url) ?? json({}, false, 404);
     }));
     render(<MemoryBaselinePanel petId={7} />);
     const activeCard = (await screen.findByText("候选 #4")).closest<HTMLElement>(".memory-card")!;
@@ -119,7 +125,7 @@ describe("memory and baseline closure", () => {
       if (url.endsWith("/baseline")) return json({ error: {} }, false, 404);
       if (url.endsWith("/memory-candidates")) return json([]);
       if (url.includes("baseline-snapshots/latest")) return json({ ...snapshot, status: "INSUFFICIENT_DATA", sample_count: 2, metrics_json: [], is_stale: true });
-      return json({}, false, 404);
+      return auxiliary(url) ?? json({}, false, 404);
     }));
     render(<MemoryBaselinePanel petId={7} />);
     expect(await screen.findByText("来源已变化")).toBeInTheDocument();
@@ -134,12 +140,40 @@ describe("memory and baseline closure", () => {
       if (url.endsWith("/memory-candidates")) return json([]);
       if (url.includes("baseline-snapshots/recompute") && init?.method === "POST") return Promise.reject(new TypeError("offline"));
       if (url.includes("baseline-snapshots/latest")) return json(snapshot);
-      return json({}, false, 404);
+      return auxiliary(url) ?? json({}, false, 404);
     }));
     render(<MemoryBaselinePanel petId={7} />);
     expect((await screen.findAllByText(/样本 3/)).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "按当前数据重算" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("当前已显示的快照保持不变");
     expect(screen.getAllByText(/样本 3/).length).toBeGreaterThan(0);
+  });
+
+  it("edits life events and keeps temporal summaries tied to recorded episodes", async () => {
+    let lifeEvent = { id: 3, pet_id: 7, event_type: "moving", happened_at: "2026-10-10T08:00:00Z", description: "Moved to a quieter room" };
+    const episode = { id: 21, pet_id: 7, happened_at: "2026-10-11T08:00:00Z", episode_type: "note", raw_owner_input: "Rested beside the window", context: null, duration_seconds: null, frequency_count: null, intensity: null, location: null, trigger_context: null, created_at: "2026-10-11T08:01:00Z", updated_at: "2026-10-11T08:01:00Z", observations: [], owner_interpretations: [], safety_check: null, evidence_references: [], plan_links: [], veterinary_escalations: [], scheduled_follow_ups: [], result_of_follow_up: null };
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/baseline")) return json({ error: {} }, false, 404);
+      if (url.endsWith("/memory-candidates")) return json([]);
+      if (url.endsWith("/life-events")) return json([lifeEvent]);
+      if (url.endsWith("/life-events/3") && init?.method === "PATCH") { lifeEvent = { ...lifeEvent, ...JSON.parse(String(init.body)) }; return json(lifeEvent); }
+      if (url.includes("/timeline")) {
+        const from = new URL(url, "http://local").searchParams.get("from");
+        const items = from && new Date(from).getTime() < new Date("2026-10-01T00:00:00Z").getTime() ? [] : [episode];
+        return json({ items, page: 1, page_size: 100, total: items.length, has_more: false });
+      }
+      if (url.includes("baseline-snapshots/latest")) return json({ error: {} }, false, 404);
+      return json({}, false, 404);
+    }));
+    render(<MemoryBaselinePanel petId={7} />);
+    expect(await screen.findByText("Moved to a quieter room")).toBeInTheDocument();
+    expect(screen.getByText(/Episode #21/)).toBeInTheDocument();
+    expect(screen.getByText(/时间接近不代表/)).toBeInTheDocument();
+    expect(screen.getByText(/下次可记录持续时长/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "编辑事件" }));
+    fireEvent.change(screen.getByLabelText("事实描述"), { target: { value: "Moved the bed beside the window" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
+    expect(await screen.findByText("Moved the bed beside the window")).toBeInTheDocument();
   });
 });

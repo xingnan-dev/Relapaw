@@ -19,6 +19,31 @@ class ManualMemoryCreate(StrictModel):
     category: Literal["ROUTINE", "PREFERENCE", "TRIGGER", "COMFORT", "HEALTH_CONTEXT", "OTHER"]
     statement: str = Field(min_length=1, max_length=2000)
 
+    @field_validator("statement")
+    @classmethod
+    def statement_is_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("statement must contain non-whitespace text")
+        return value
+
+
+class ManualMemoryUpdate(ManualMemoryCreate):
+    pass
+
+
+class MemoryRevisionRead(ORMModel):
+    id: int
+    candidate_id: int
+    revision_number: int
+    category: str
+    statement: str
+    created_at: datetime
+
+    @field_validator("created_at")
+    @classmethod
+    def database_datetime_is_utc(cls, value: datetime) -> datetime:
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
 
 class MemoryDecisionRead(ORMModel):
     id: int
@@ -48,6 +73,7 @@ class MemoryCandidateRead(ORMModel):
     is_stale: bool
     state: MemoryCandidateState
     decisions: list[MemoryDecisionRead] = Field(default_factory=list)
+    revisions: list[MemoryRevisionRead] = Field(default_factory=list)
 
     @field_validator("source_episode_updated_at", "created_at")
     @classmethod

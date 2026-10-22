@@ -22,6 +22,7 @@ from app.services.records import create_complete_episode, update_episode_aggrega
 from app.services.timeline import get_episode_detail
 from app.core.config import settings
 from app.services.privacy import redact_episode
+from app.services.media_storage import cleanup_path
 
 router = APIRouter(prefix="/episodes", tags=["episodes"])
 
@@ -51,11 +52,13 @@ def update_episode(episode_id: int, payload: EpisodeUpdate, db: Session = Depend
 def delete_episode(episode_id: int, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
     episode = require_episode(db, episode_id, user, for_update=True)
     try:
-        redact_episode(db, episode, user, settings)
+        media_paths = redact_episode(db, episode, user, settings)
         db.commit()
     except Exception:
         db.rollback()
         raise
+    for path in media_paths:
+        cleanup_path(path, settings.media_dir)
 
 
 @router.post("/complete", response_model=EpisodeRead, status_code=201)

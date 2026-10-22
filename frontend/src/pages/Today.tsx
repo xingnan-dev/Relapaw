@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { cancelFollowUp, completeFollowUp, createObservationPlan, listFollowUps, listObservationPlans, updateObservationPlan } from "../api";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { cancelFollowUp, completeFollowUp, createObservationPlan, getTimeline, listFollowUps, listObservationPlans, updateObservationPlan } from "../api";
 import { useCurrentPet } from "../state/CurrentPetContext";
-import type { DangerSignal, FollowUp, FollowUpOutcome, ObservationPlan } from "../types";
+import type { DangerSignal, Episode, FollowUp, FollowUpOutcome, ObservationPlan } from "../types";
 import { PetBotanicalSketch } from "../components/brand";
 
 const outcomes: Array<[FollowUpOutcome, string]> = [["PERSISTING", "持续"], ["IMPROVED", "改善"], ["WORSENED", "加重"], ["RESOLVED", "已消失"], ["NEW_SIGNS", "新情况"]];
@@ -16,14 +16,21 @@ export function Today({ onAddPet, onUnderstand, onOpenEpisode }: { onAddPet: () 
   const [actionError, setActionError] = useState("");
   const [plans, setPlans] = useState<ObservationPlan[]>([]);
   const [planState, setPlanState] = useState<"loading" | "ready" | "error">("loading");
+  const [recent, setRecent] = useState<Episode[]>([]);
+  const [recentState, setRecentState] = useState<"loading" | "ready" | "error">("loading");
+  const loadGeneration = useRef(0);
 
   const load = useCallback(async () => {
-    if (!pet) { setFollowUps([]); setFollowState("ready"); return; }
+    const generation = ++loadGeneration.current;
+    setFollowUps([]); setPlans([]); setRecent([]);
+    if (!pet) { setFollowState("ready"); setPlanState("ready"); setRecentState("ready"); return; }
     setFollowState("loading");
-    try { setFollowUps(await listFollowUps(pet.id)); setFollowState("ready"); }
-    catch { setFollowState("error"); }
+    try { const items = await listFollowUps(pet.id); if (loadGeneration.current === generation) { setFollowUps(items); setFollowState("ready"); } }
+    catch { if (loadGeneration.current === generation) setFollowState("error"); }
     setPlanState("loading");
-    try { setPlans((await listObservationPlans(pet.id)).filter((item) => item.status === "ACTIVE")); setPlanState("ready"); } catch { setPlanState("error"); }
+    try { const items = (await listObservationPlans(pet.id)).filter((item) => item.status === "ACTIVE"); if (loadGeneration.current === generation) { setPlans(items); setPlanState("ready"); } } catch { if (loadGeneration.current === generation) setPlanState("error"); }
+    setRecentState("loading");
+    try { const from = new Date(Date.now() - 7 * 86400000).toISOString(); const items = (await getTimeline(pet.id, 1, 5, { from })).items; if (loadGeneration.current === generation) { setRecent(items); setRecentState("ready"); } } catch { if (loadGeneration.current === generation) setRecentState("error"); }
   }, [pet]);
   useEffect(() => { void load(); }, [load]);
 
@@ -51,15 +58,36 @@ export function Today({ onAddPet, onUnderstand, onOpenEpisode }: { onAddPet: () 
       {followUps.map((item) => <article className="card" key={item.id}><p className="eyebrow">{item.timing_status === "OVERDUE" ? "已逾期" : "今日到期"}</p><h3>{item.source_episode_type}</h3><p>{item.source_raw_owner_input}</p><small>计划时间：{new Date(item.scheduled_at).toLocaleString()}</small><div className="panel-actions"><button onClick={() => onOpenEpisode(item.source_episode_id)}>查看原记录</button><button onClick={() => setSelected(item)}>开始复评</button><button className="danger-button" onClick={() => setCancelTarget(item)}>取消复评</button></div></article>)}
     </section>
     {cancelTarget && <section role="dialog" aria-modal="true" aria-labelledby="cancel-follow-up-title" className="card"><h3 id="cancel-follow-up-title">取消这次复评？</h3><p>取消后不会创建新记录，原 Episode 保持不变。</p><div className="panel-actions"><button onClick={() => setCancelTarget(null)}>返回</button><button className="danger-button" onClick={() => void confirmCancel()}>确认取消复评</button></div></section>}
-    <PlanSection petId={pet.id} plans={plans} state={planState} reload={load} />
+    <PlanSection key={pet.id} petId={pet.id} plans={plans} state={planState} reload={load} />
+    <section className="card" aria-labelledby="recent-change-title"><p className="eyebrow">RECENT · 仅引用已记录事实</p><h3 id="recent-change-title">近七天记录</h3>
+      {recentState === "loading" && <p role="status">正在读取近期记录…</p>}
+      {recentState === "error" && <div role="alert"><p>暂时无法读取近期记录。</p><button onClick={() => void load()}>重试近期记录</button></div>}
+      {recentState === "ready" && recent.length === 0 && <p>近七天还没有记录；这里不会猜测变化。</p>}
+      {recent.map((episode) => <article key={episode.id}><time dateTime={episode.happened_at}>{new Date(episode.happened_at).toLocaleString()}</time><p>{episode.raw_owner_input}</p><button type="button" onClick={() => onOpenEpisode(episode.id)}>查看记录详情</button></article>)}
+    </section>
   </section>;
 }
 
 function PlanSection({ petId, plans, state, reload }: { petId: number; plans: ObservationPlan[]; state: "loading" | "ready" | "error"; reload: () => Promise<void> }) {
-  const [creating, setCreating] = useState(false); const [goal, setGoal] = useState(""); const [item, setItem] = useState(""); const [error, setError] = useState(""); const [cancelId, setCancelId] = useState<number | null>(null);
-  async function create(event: FormEvent) { event.preventDefault(); setError(""); if (!goal.trim() || !item.trim()) { setError("请填写观察目标和至少一个观察项目。"); return; } const start = new Date(); const end = new Date(start.getTime() + 7 * 86400000); try { await createObservationPlan(petId, { status: "ACTIVE", start_at: start.toISOString(), end_at: end.toISOString(), goal: goal.trim(), items: [{ label: item.trim(), is_required: true }] }); setCreating(false); setGoal(""); setItem(""); await reload(); } catch { setError("计划保存失败，输入仍保留。请重试。"); } }
-  async function transition(id: number, status: "COMPLETED" | "CANCELLED") { setError(""); try { await updateObservationPlan(id, status); setCancelId(null); await reload(); } catch { setError("计划状态更新失败，请重试。"); } }
-  return <section className="card" aria-labelledby="plan-title"><p className="eyebrow">OBSERVATION</p><h3 id="plan-title">一段观察</h3>{state === "loading" && <p role="status">正在读取观察计划…</p>}{state === "error" && <div role="status"><p>暂时无法读取观察计划。</p><button onClick={() => void reload()}>重试计划</button></div>}{state === "ready" && !plans.length && <p>还没有正在进行的观察。</p>}{plans.map((plan) => <article key={plan.id}><strong>{plan.goal}</strong><ul>{plan.items.map((entry) => <li key={entry.id}>{entry.label}</li>)}</ul><div className="panel-actions"><button onClick={() => void transition(plan.id, "COMPLETED")}>完成计划</button><button className="danger-button" onClick={() => setCancelId(plan.id)}>取消计划</button></div></article>)}{cancelId && <div role="dialog" aria-modal="true"><p>确认取消这个观察计划？已有记录不会删除。</p><button onClick={() => setCancelId(null)}>返回</button><button onClick={() => void transition(cancelId, "CANCELLED")}>确认取消计划</button></div>}{creating ? <form onSubmit={(event) => void create(event)}><label>观察目标<input aria-label="观察目标" value={goal} onChange={(event) => setGoal(event.target.value)} /></label><label>观察项目<input aria-label="观察项目" value={item} onChange={(event) => setItem(event.target.value)} /></label>{error && <p role="alert">{error}</p>}<button type="button" onClick={() => setCreating(false)}>取消创建</button><button>保存计划</button></form> : <button aria-label="创建观察计划" onClick={() => setCreating(true)}>开始一段观察</button>}</section>;
+  const [creating, setCreating] = useState(false); const [goal, setGoal] = useState(""); const [items, setItems] = useState([""]); const [error, setError] = useState(""); const [statusMessage, setStatusMessage] = useState(""); const [cancelId, setCancelId] = useState<number | null>(null); const [editingId, setEditingId] = useState<number | null>(null); const [busy, setBusy] = useState(false);
+  function resetEditor() { setCreating(false); setEditingId(null); setGoal(""); setItems([""]); setError(""); }
+  function edit(plan: ObservationPlan) { setCreating(false); setEditingId(plan.id); setGoal(plan.goal); setItems(plan.items.map((item) => item.label)); setError(""); setStatusMessage(""); }
+  async function save(event: FormEvent) {
+    event.preventDefault(); setError(""); setStatusMessage("");
+    const normalized = items.map((item) => item.trim()).filter(Boolean);
+    if (!goal.trim() || normalized.length === 0) { setError("请填写观察目标和至少一个观察项目。"); return; }
+    setBusy(true);
+    const start = new Date(); const end = new Date(start.getTime() + 7 * 86400000);
+    try {
+      if (editingId) await updateObservationPlan(editingId, { goal: goal.trim(), items: normalized.map((label) => ({ label, is_required: true })) });
+      else await createObservationPlan(petId, { status: "ACTIVE", start_at: start.toISOString(), end_at: end.toISOString(), goal: goal.trim(), items: normalized.map((label) => ({ label, is_required: true })) });
+      const message = editingId ? "观察计划已更新。" : "观察计划已保存。"; resetEditor(); await reload(); setStatusMessage(message);
+    } catch { setError("计划保存失败，输入仍保留。请重试。"); }
+    finally { setBusy(false); }
+  }
+  async function transition(id: number, status: "COMPLETED" | "CANCELLED") { setError(""); setStatusMessage(""); setBusy(true); try { await updateObservationPlan(id, status); setCancelId(null); await reload(); setStatusMessage(status === "COMPLETED" ? "观察计划已完成。" : "观察计划已取消。"); } catch { setError("计划状态更新失败，请重试。"); } finally { setBusy(false); } }
+  const editing = creating || editingId !== null;
+  return <section className="card" aria-labelledby="plan-title"><p className="eyebrow">OBSERVATION</p><h3 id="plan-title">一段观察</h3>{state === "loading" && <p role="status">正在读取观察计划…</p>}{state === "error" && <div role="alert"><p>暂时无法读取观察计划。</p><button onClick={() => void reload()}>重试计划</button></div>}{state === "ready" && !plans.length && <p>还没有正在进行的观察。</p>}{plans.map((plan) => <article key={plan.id}><strong>{plan.goal}</strong><ul>{plan.items.map((entry) => <li key={entry.id}>{entry.label}</li>)}</ul><div className="panel-actions"><button disabled={busy} onClick={() => edit(plan)}>编辑计划</button><button disabled={busy} onClick={() => void transition(plan.id, "COMPLETED")}>完成计划</button><button disabled={busy} className="danger-button" onClick={() => setCancelId(plan.id)}>取消计划</button></div></article>)}{cancelId && <div role="dialog" aria-modal="true"><p>确认取消这个观察计划？已有记录不会删除。</p><button disabled={busy} onClick={() => setCancelId(null)}>返回</button><button disabled={busy} onClick={() => void transition(cancelId, "CANCELLED")}>{busy ? "正在取消…" : "确认取消计划"}</button></div>}{editing ? <form onSubmit={(event) => void save(event)}><label>观察目标<input aria-label="观察目标" value={goal} onChange={(event) => setGoal(event.target.value)} /></label><fieldset><legend>观察项目</legend>{items.map((item, index) => <div key={index} className="inline-actions"><label>项目 {index + 1}<input aria-label={`观察项目 ${index + 1}`} value={item} onChange={(event) => setItems((current) => current.map((value, itemIndex) => itemIndex === index ? event.target.value : value))} /></label>{items.length > 1 && <button type="button" onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>移除项目 {index + 1}</button>}</div>)}<button type="button" onClick={() => setItems((current) => [...current, ""])}>添加观察项目</button></fieldset>{error && <p role="alert">{error}</p>}<button type="button" disabled={busy} onClick={resetEditor}>取消编辑</button><button disabled={busy}>{busy ? "正在保存…" : editingId ? "保存修改" : "保存计划"}</button></form> : <button aria-label="创建观察计划" onClick={() => { setCreating(true); setStatusMessage(""); }}>开始一段观察</button>}{statusMessage && <p role="status">{statusMessage}</p>}{!editing && error && <p role="alert">{error}</p>}</section>;
 }
 
 function FollowUpForm({ followUp, onCancel, onCompleted }: { followUp: FollowUp; onCancel: () => void; onCompleted: (episodeId: number) => void }) {

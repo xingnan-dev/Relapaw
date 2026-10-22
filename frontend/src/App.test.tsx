@@ -16,8 +16,10 @@ function mockApi(options: { pets?: typeof pet[]; storedPetValid?: boolean; store
     const url = String(input);
     if (url === "/api/v1/capabilities") return json(options.capabilities ?? { environment: "development", synthetic_data: false, dataset_version: null, ai_analysis_enabled: false, model_qualification: "NOT_QUALIFIED" });
     if (url === "/api/v1/pets" && init?.method === "POST") return json(pet);
+    if (url === "/api/v1/pets/7" && init?.method === "PATCH") return json({ ...pet, ...JSON.parse(String(init.body)) });
     if (url === "/api/v1/episodes/complete" && init?.method === "POST") return options.completeError ? json({ error: { code: "INTERNAL_ERROR", message: "Failed" } }, false, 500) : json({ id: 11 }, true, 201);
     if (url === "/api/v1/pets") return json(pets);
+    if (url === "/api/v1/pets?include_archived=true") return json(pets);
     if (url === "/api/v1/pets/7") {
       if (options.storedPetUnavailable) return json({}, false, 503);
       return options.storedPetValid === false ? json({}, false, 404) : json(pet);
@@ -195,21 +197,20 @@ describe("main shell", () => {
     expect(localStorage.getItem("relapaw.currentPetId")).toBe("8");
   });
 
-  it("requires confirmation before a pet switch can discard an unsaved record draft", async () => {
+  it("autosaves drafts per pet and restores them after switching", async () => {
     vi.stubGlobal("fetch", mockApi({ pets: [pet, secondPet] }));
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<App />);
     await screen.findByRole("heading", { name: "Mochi" });
     fireEvent.click(screen.getByRole("button", { name: "Understand" }));
     fireEvent.change(screen.getByLabelText("原始描述"), { target: { value: "尚未保存" } });
-    fireEvent.change(screen.getByLabelText("当前宠物"), { target: { value: "8" } });
-    expect(confirm).toHaveBeenCalled();
-    expect(screen.getByLabelText("当前宠物")).toHaveValue("7");
-    expect(screen.getByLabelText("原始描述")).toHaveValue("尚未保存");
-    confirm.mockReturnValue(true);
+    expect(await screen.findByText(/草稿已自动保存在本机/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("当前宠物"), { target: { value: "8" } });
     await waitFor(() => expect(screen.getByLabelText("当前宠物")).toHaveValue("8"));
     expect(screen.getByLabelText("原始描述")).toHaveValue("");
+    fireEvent.change(screen.getByLabelText("原始描述"), { target: { value: "Luna 的草稿" } });
+    fireEvent.change(screen.getByLabelText("当前宠物"), { target: { value: "7" } });
+    await waitFor(() => expect(screen.getByLabelText("原始描述")).toHaveValue("尚未保存"));
+    expect(screen.getByText("已恢复这只宠物上次未完成的草稿。")).toBeInTheDocument();
   });
 
   it("labels a verified synthetic demo dataset", async () => {
@@ -260,14 +261,27 @@ describe("main shell", () => {
     const profile = screen.getByRole("button", { name: /查看它的档案/ });
     fireEvent.click(profile);
     expect(profile).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText(/当前仅支持查看/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "编辑资料" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "归档档案" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /记录原则/ }));
     expect(profile).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByText(/先保留亲眼观察到的事实/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /数据与隐私/ }));
     expect(screen.getByText(/撤回长期记忆不会改写原始记录/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /关系足迹/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /生活事件/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加生活事件" })).toBeInTheDocument();
+  });
+
+  it("edits a pet profile and refreshes the global pet selector", async () => {
+    render(<App />);
+    await screen.findByRole("heading", { name: "Mochi" });
+    fireEvent.click(screen.getByRole("button", { name: "Us" }));
+    fireEvent.click(screen.getByRole("button", { name: /查看它的档案/ }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑资料" }));
+    fireEvent.change(screen.getByLabelText("名字"), { target: { value: "Mochi Bean" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存资料" }));
+    expect(await screen.findByText("资料已保存。")).toBeInTheDocument();
+    expect(screen.getByLabelText("当前宠物")).toHaveTextContent("Mochi Bean");
   });
 
   it("loads timeline with the current pet and separates both lenses", async () => {
@@ -279,6 +293,23 @@ describe("main shell", () => {
     fireEvent.click(await screen.findByRole("button", { name: /change/ }));
     expect(await screen.findByText("发生了什么")).toBeInTheDocument();
     expect(screen.getByText("你的理解")).toBeInTheDocument();
+  });
+
+  it("searches Timeline and exposes category and calendar filters", async () => {
+    const fetchMock = mockApi({ pets: [pet] });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+    await screen.findByRole("heading", { name: "Mochi" });
+    fireEvent.click(screen.getByRole("button", { name: "Timeline" }));
+    const search = await screen.findByLabelText("搜索 Timeline");
+    fireEvent.change(search, { target: { value: "蓝色毯子" } });
+    fireEvent.submit(search.closest("form")!);
+    fireEvent.change(screen.getByLabelText("行为标签"), { target: { value: "RESTING" } });
+    fireEvent.change(screen.getByLabelText("Timeline 开始日期"), { target: { value: "2026-10-01" } });
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => {
+      const url = String(input);
+      return url.includes("q=%E8%93%9D%E8%89%B2%E6%AF%AF%E5%AD%90") && url.includes("category=RESTING") && url.includes("from=");
+    })).toBe(true));
   });
 
   it("does not depend on motion to navigate", async () => {
@@ -374,6 +405,23 @@ describe("main shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存手工记录" }));
     expect(await screen.findByRole("heading", { name: "记录详情" })).toBeInTheDocument();
     expect(attempts).toBe(2);
+  });
+
+  it("freezes pet scope and inputs while a record save is in flight", async () => {
+    const base = mockApi({ pets: [pet, secondPet] });
+    let finishSave!: (value: Awaited<ReturnType<typeof json>>) => void;
+    const pending = new Promise<Awaited<ReturnType<typeof json>>>((resolve) => { finishSave = resolve; });
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input) === "/api/v1/episodes/complete" ? pending : base(input, init)));
+    render(<App />);
+    await screen.findByRole("heading", { name: "Mochi" });
+    fireEvent.click(screen.getByRole("button", { name: "Understand" }));
+    fireEvent.change(screen.getByLabelText("原始描述"), { target: { value: "提交快照" } });
+    fireEvent.change(screen.getByLabelText("发生了什么"), { target: { value: "停留五分钟" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存手工记录" }));
+    expect(screen.getByLabelText("当前宠物")).toBeDisabled();
+    expect(screen.getByLabelText("原始描述")).toBeDisabled();
+    finishSave(await json({ id: 11 }, true, 201));
+    expect(await screen.findByRole("heading", { name: "记录详情" })).toBeInTheDocument();
   });
 
   it("distinguishes an observation-plan load failure from an empty plan list", async () => {
@@ -559,7 +607,7 @@ describe("timeline management", () => {
   it("shows delete failure and list loading failure with retry", async () => {
     let listAttempts = 0;
     const fetchMock = timelineApi((url, init) => {
-      if (url.startsWith("/api/v1/pets/7/timeline")) { listAttempts += 1; return listAttempts === 1 ? json({}, false, 503) : json({ items: [managedEpisode], total: 1, page: 1, page_size: 20, has_more: false }); }
+      if (url.startsWith("/api/v1/pets/7/timeline") && url.includes("page_size=20")) { listAttempts += 1; return listAttempts === 1 ? json({}, false, 503) : json({ items: [managedEpisode], total: 1, page: 1, page_size: 20, has_more: false }); }
       if (url === "/api/v1/episodes/21" && init?.method === "DELETE") return json({}, false, 503);
       return undefined;
     });
@@ -589,7 +637,7 @@ describe("follow-up flow", () => {
       return undefined;
     });
     await openTodayWith(fetchMock);
-    expect(await screen.findByRole("alert")).toHaveTextContent("暂时无法读取待复评项目");
+    expect(await screen.findByText("暂时无法读取待复评项目。")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重试待复评" }));
     expect(await screen.findByText("今天没有需要回看的记录。")).toBeInTheDocument();
   });
@@ -678,7 +726,9 @@ describe("observation plan flow", () => {
       return undefined;
     });
     await openTodayWith(fetchMock); fireEvent.click(await screen.findByRole("button", { name: "创建观察计划" }));
-    fireEvent.change(screen.getByLabelText("观察目标"), { target: { value: "观察门口停留" } }); fireEvent.change(screen.getByLabelText("观察项目"), { target: { value: "记录停留秒数" } }); fireEvent.click(screen.getByRole("button", { name: "保存计划" }));
+    fireEvent.change(screen.getByLabelText("观察目标"), { target: { value: "观察门口停留" } }); fireEvent.change(screen.getByLabelText("观察项目 1"), { target: { value: "记录停留秒数" } }); fireEvent.click(screen.getByRole("button", { name: "添加观察项目" })); fireEvent.change(screen.getByLabelText("观察项目 2"), { target: { value: "记录离开方向" } }); fireEvent.click(screen.getByRole("button", { name: "保存计划" }));
+    const createCall = fetchMock.mock.calls.find(([input, init]) => String(input) === "/api/v1/pets/7/observation-plans" && init?.method === "POST");
+    expect(JSON.parse(String(createCall?.[1]?.body)).items).toHaveLength(2);
     expect(await screen.findByText("记录停留秒数")).toBeInTheDocument(); fireEvent.click(screen.getByRole("button", { name: "取消计划" })); expect(screen.getByRole("dialog")).toBeInTheDocument(); fireEvent.click(screen.getByRole("button", { name: "返回" }));
     fireEvent.click(screen.getByRole("button", { name: "完成计划" })); await screen.findByText("还没有正在进行的观察。");
   });

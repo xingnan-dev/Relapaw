@@ -26,7 +26,7 @@ Relapaw 是面向宠物主人的 AI 行为理解与人宠关系 Copilot。产品
 .\scripts\demo.ps1 stop
 ```
 
-演示页面位于 `http://127.0.0.1:8000/`。固定演示数据完全合成，保存在独立的 `backend/.demo/relapaw-demo.db`，运行时 AI 默认关闭。需要恢复固定数据时执行 `.\scripts\demo.ps1 reset`，再重新 `start`。完整说明见[演示操作手册](docs/DEMO_OPERATOR_GUIDE.md)。
+演示页面位于 `http://127.0.0.1:8000/`。固定演示数据完全合成，保存在独立的 `backend/.demo/relapaw-demo.db`，运行时 AI 默认关闭。需要恢复固定数据时执行 `.\scripts\demo.ps1 reset`，再重新 `start`。完整说明见[演示操作手册](docs/DEMO_OPERATOR_GUIDE.md)。长期本地使用、媒体存储和备份恢复见[本地 Alpha 使用手册](docs/LOCAL_ALPHA_GUIDE.md)。
 
 ### 后端
 

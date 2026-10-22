@@ -26,7 +26,7 @@ def test_empty_database_upgrades_to_identity_head(tmp_path, monkeypatch):
 
     engine = create_engine(database_url)
     with engine.connect() as connection:
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "20261020_0014"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "20261021_0018"
         owner_column = next(item for item in inspect(connection).get_columns("pets") if item["name"] == "owner_user_id")
         assert owner_column["nullable"] is False
         assert {"users", "user_identities", "identity_invitations", "user_sessions", "terms_acceptances", "audit_events"}.issubset(
@@ -55,7 +55,7 @@ def test_representative_legacy_database_requires_explicit_assignment(tmp_path, m
 
     command.upgrade(config, "head")
     with engine.connect() as connection:
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "20261020_0014"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "20261021_0018"
         assert connection.scalar(text("SELECT count(*) FROM pets WHERE owner_user_id IS NULL")) == 0
         owner_column = next(item for item in inspect(connection).get_columns("pets") if item["name"] == "owner_user_id")
         assert owner_column["nullable"] is False
@@ -82,5 +82,5 @@ def test_multiple_legacy_owner_profiles_receive_distinct_disabled_quarantine_use
         ), {"first": owners[0], "second": owners[1]}).all()) == {"DISABLED"}
     command.upgrade(config, "head")
     with engine.connect() as connection:
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "20261020_0014"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "20261021_0018"
     engine.dispose()

@@ -336,8 +336,9 @@ def test_csrf_token_endpoint_is_post_only_origin_bound_and_not_cached(auth_runti
     assert client.get("/api/v1/auth/session").headers["cache-control"] == "no-store"
 
 
-def test_two_users_cannot_cross_pet_episode_plan_or_lists(auth_runtime):
+def test_two_users_cannot_cross_pet_episode_plan_media_or_lists(auth_runtime, tmp_path, monkeypatch):
     new_client, _sessions = auth_runtime
+    monkeypatch.setattr(settings, "media_dir", tmp_path / "media")
     alice = new_client()
     bob = new_client()
     alice_csrf = login(alice, "alice@example.test")
@@ -381,10 +382,45 @@ def test_two_users_cannot_cross_pet_episode_plan_or_lists(auth_runtime):
     )
     assert plan_response.status_code == 201, plan_response.text
     plan = plan_response.json()
+    life_event = alice.post(
+        f"/api/v1/pets/{pet['id']}/life-events", headers=write_headers(alice_csrf),
+        json={"event_type": "moving", "happened_at": "2026-10-19T08:00:00Z", "description": "Private event"},
+    ).json()
+    relationship_event = alice.post(
+        "/api/v1/relationship-events", headers=write_headers(alice_csrf),
+        json={
+            "relationship_kind": "OWNER_PET", "participant_pet_ids": [pet["id"]],
+            "happened_at": "2026-10-19T09:00:00Z", "observation_type": "OWNER_INTERACTION",
+            "observation_text": "Alice pet sat beside the owner.",
+        },
+    ).json()
+    media_response = alice.post(
+        f"/api/v1/episodes/{episode['id']}/media",
+        headers={**write_headers(alice_csrf), "Content-Type": "image/png", "X-Filename": "synthetic.png"},
+        content=b"\x89PNG\r\n\x1a\n",
+    )
+    assert media_response.status_code == 201, media_response.text
+    media = media_response.json()
 
     assert bob.get(f"/api/v1/pets/{pet['id']}").status_code == 404
     assert bob.get(f"/api/v1/episodes/{episode['id']}").status_code == 404
+    assert bob.get(f"/api/v1/episodes/{episode['id']}/media").status_code == 404
+    assert bob.get(f"/api/v1/media/{media['id']}/content").status_code == 404
+    assert bob.delete(f"/api/v1/media/{media['id']}", headers=write_headers(bob_csrf)).status_code == 404
     assert bob.get(f"/api/v1/observation-plans/{plan['id']}").status_code == 404
+    assert bob.patch(
+        f"/api/v1/life-events/{life_event['id']}", headers=write_headers(bob_csrf),
+        json={"description": "Must not be changed"},
+    ).status_code == 404
+    assert bob.get(f"/api/v1/pets/{pet['id']}/relationship-events").status_code == 404
+    assert bob.put(
+        f"/api/v1/relationship-events/{relationship_event['id']}", headers=write_headers(bob_csrf),
+        json={
+            "relationship_kind": "OWNER_PET", "participant_pet_ids": [pet["id"]],
+            "happened_at": "2026-10-19T09:00:00Z", "observation_type": "OWNER_INTERACTION",
+            "observation_text": "Must not be changed.",
+        },
+    ).status_code == 404
     assert bob.get("/api/v1/pets").json() == []
     assert bob.post(
         "/api/v1/episodes",
@@ -397,6 +433,10 @@ def test_two_users_cannot_cross_pet_episode_plan_or_lists(auth_runtime):
         },
     ).status_code == 404
     assert alice.get(f"/api/v1/pets/{pet['id']}/timeline").json()["total"] == 1
+    assert bob.patch(f"/api/v1/pets/{pet['id']}", headers=write_headers(bob_csrf), json={"archived": True}).status_code == 404
+    assert alice.patch(f"/api/v1/pets/{pet['id']}", headers=write_headers(alice_csrf), json={"archived": True}).status_code == 200
+    assert bob.get("/api/v1/pets?include_archived=true").json() == []
+    assert bob.patch(f"/api/v1/pets/{pet['id']}", headers=write_headers(bob_csrf), json={"archived": False}).status_code == 404
 
 
 def test_nested_resource_idor_matrix_returns_404_without_mutation(auth_runtime):
@@ -459,6 +499,7 @@ def test_nested_resource_idor_matrix_returns_404_without_mutation(auth_runtime):
         bob.post(f"/api/v1/claims/{claim_id}/confirmations", headers=write_headers(bob_csrf), json={"decision": "REJECTED"}),
         bob.post(f"/api/v1/claims/{claim_id}/memory-candidate", headers=write_headers(bob_csrf)),
         bob.post(f"/api/v1/memory-candidates/{candidate_id}/decisions", headers=write_headers(bob_csrf), json={"request_id": "attack", "decision": "INCLUDE"}),
+        bob.patch(f"/api/v1/memory-candidates/{candidate_id}", headers=write_headers(bob_csrf), json={"category": "OTHER", "statement": "Must not be changed"}),
         bob.get(f"/api/v1/baseline-snapshots/{snapshot['id']}"),
         bob.post(f"/api/v1/follow-ups/{follow_up['id']}/cancel", headers=write_headers(bob_csrf)),
         bob.patch(f"/api/v1/veterinary-escalations/{escalation['id']}", headers=write_headers(bob_csrf), json={"status": "CLOSED"}),

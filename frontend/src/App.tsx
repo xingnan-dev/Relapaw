@@ -49,9 +49,9 @@ function MainShell({ onAddPet }: { onAddPet: () => void }) {
   });
   const [targetEpisodeId, setTargetEpisodeId] = useState<number | null>(null);
   const [targetUsMemory, setTargetUsMemory] = useState(false);
-  const [recordDraftDirty, setRecordDraftDirty] = useState(false);
   const [signOutBusy, setSignOutBusy] = useState(false);
   const [signOutError, setSignOutError] = useState("");
+  const [recordSubmitting, setRecordSubmitting] = useState(false);
   useEffect(() => { setTargetEpisodeId(null); setTargetUsMemory(false); }, [pet?.id]);
   useLayoutEffect(() => {
     const page = pageRef.current;
@@ -62,7 +62,7 @@ function MainShell({ onAddPet }: { onAddPet: () => void }) {
   const openMemory = () => { setTargetUsMemory(true); setActive("Us"); };
   const pages = {
     Today: <Today onAddPet={onAddPet} onUnderstand={() => setActive("Understand")} onOpenEpisode={openEpisode} />,
-    Understand: <Understand onSaved={openEpisode} onDirtyChange={setRecordDraftDirty} />,
+    Understand: <Understand onSaved={openEpisode} onSubmittingChange={setRecordSubmitting} />,
     Timeline: <Timeline initialEpisodeId={targetEpisodeId} onInitialEpisodeOpened={() => setTargetEpisodeId(null)} onOpenMemory={openMemory} />,
     Us: <Us onAddPet={onAddPet} initialSection={targetUsMemory ? "memory" : null} onInitialSectionOpened={() => setTargetUsMemory(false)} />,
   };
@@ -78,11 +78,9 @@ function MainShell({ onAddPet }: { onAddPet: () => void }) {
         <div className="brand-lockup"><BrandMark/><div><h1>Relapaw</h1><p>Beyond the Paw. The Bond.</p></div></div>
         <p className="brand-promise">先看见发生了什么，再慢慢理解彼此。</p>
         {pets.length > 0 && <label className="pet-switcher">当前宠物
-          <select aria-label="当前宠物" value={pet?.id ?? ""} onChange={(event) => {
+          <select aria-label="当前宠物" value={pet?.id ?? ""} disabled={recordSubmitting} onChange={(event) => {
             const next = pets.find((item) => item.id === Number(event.target.value));
             if (!next || next.id === pet?.id) return;
-            if (recordDraftDirty && !window.confirm("切换宠物会丢弃当前未保存的记录草稿，仍要切换吗？")) return;
-            setRecordDraftDirty(false);
             setCurrentPet(next);
           }}>{pets.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select>
         </label>}

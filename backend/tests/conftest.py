@@ -64,6 +64,6 @@ def demo_db(tmp_path):
     Base.metadata.create_all(demo_engine)
     with demo_engine.begin() as connection:
         connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
-        connection.execute(text("INSERT INTO alembic_version VALUES ('20261020_0014')"))
+        connection.execute(text("INSERT INTO alembic_version VALUES ('20261021_0018')"))
     yield sessionmaker(bind=demo_engine, expire_on_commit=False), tmp_path / "manifest.json"
     demo_engine.dispose()

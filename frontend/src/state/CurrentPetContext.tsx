@@ -84,7 +84,9 @@ export function CurrentPetProvider({ children }: { children: ReactNode }) {
     setCurrentPet(nextPet) {
       localStorage.setItem(CURRENT_PET_KEY, String(nextPet.id));
       setPet(nextPet);
-      setPets((current) => current.some((item) => item.id === nextPet.id) ? current : [...current, nextPet]);
+      setPets((current) => current.some((item) => item.id === nextPet.id)
+        ? current.map((item) => item.id === nextPet.id ? nextPet : item)
+        : [...current, nextPet]);
       setStatus("available");
     },
     clearCurrentPet() {

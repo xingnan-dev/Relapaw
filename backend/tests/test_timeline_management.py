@@ -83,6 +83,23 @@ def test_timeline_rejects_naive_and_reversed_ranges(client, pet):
     assert reversed_range.json()["error"]["code"] == "INVALID_TIMELINE_RANGE"
 
 
+def test_timeline_searches_separate_lenses_and_filters_controlled_category(client, pet):
+    matching = create(client, pet["id"],
+        raw_owner_input="Quiet afternoon note",
+        observations=[{"behavior_type": "owner-wording", "standardized_category": "RESTING", "description": "Curled on the blue blanket", "source_type": "owner_direct"}],
+        owner_interpretations=[{"interpretation": "Perhaps the visitor made her cautious"}],
+    )
+    create(client, pet["id"], raw_owner_input="Ate dinner normally")
+
+    by_fact = client.get(f"/api/v1/pets/{pet['id']}/timeline?q=blue%20blanket").json()
+    assert [item["id"] for item in by_fact["items"]] == [matching["id"]]
+    by_interpretation = client.get(f"/api/v1/pets/{pet['id']}/timeline?q=visitor%20made").json()
+    assert [item["id"] for item in by_interpretation["items"]] == [matching["id"]]
+    by_category = client.get(f"/api/v1/pets/{pet['id']}/timeline?category=RESTING").json()
+    assert [item["id"] for item in by_category["items"]] == [matching["id"]]
+    assert client.get(f"/api/v1/pets/{pet['id']}/timeline?category=NOT_REAL").status_code == 422
+
+
 def test_timeline_never_leaks_another_pet(client, pet):
     other = client.post("/api/v1/pets", json={"name": "Other", "species": "dog"}).json()
     foreign_plan = client.post(f"/api/v1/pets/{other['id']}/observation-plans", json={"goal": "Other plan"}).json()

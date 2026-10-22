@@ -107,7 +107,7 @@ export interface EpisodeUpdate {
   owner_interpretations: Array<{ interpretation: string }>;
 }
 
-export interface TimelineFilters { from?: string; to?: string; episode_type?: string; plan_id?: number; }
+export interface TimelineFilters { from?: string; to?: string; episode_type?: string; plan_id?: number; q?: string; category?: BehaviorCategory; }
 
 export interface CompleteEpisodeCreate {
   pet_id: number;
@@ -158,6 +158,7 @@ export interface Pet {
   sex: string | null;
   neutered: boolean | null;
   created_at: string;
+  archived_at?: string | null;
 }
 
 export interface PetCreate {
@@ -251,8 +252,30 @@ export interface PetBaseline {
   hiding_pattern: Record<string, unknown> | null;
 }
 
+export type LifeEventType = "moving" | "new_pet" | "owner_absence" | "visitor" | "surgery" | "diet_change" | "environment_change" | "other";
+
+export interface LifeEvent {
+  id: number;
+  pet_id: number;
+  event_type: LifeEventType;
+  happened_at: string;
+  description: string | null;
+}
+
+export type RelationshipKind = "OWNER_PET" | "PET_PET";
+export type RelationshipObservationType = "OWNER_INTERACTION" | "SHARED_REST" | "INTERACTION" | "AVOIDANCE" | "CONFLICT" | "RESOURCE_SHARING" | "OTHER";
+export interface RelationshipEvent {
+  id: number; owner_user_id: string; relationship_kind: RelationshipKind; happened_at: string;
+  observation_type: RelationshipObservationType; observation_text: string; source_episode_id: number | null;
+  created_at: string; updated_at: string; current_owner_interpretation: string | null;
+  participants: Array<{ id: number; pet_id: number }>;
+  interpretations: Array<{ id: number; interpretation: string; created_at: string }>;
+  revisions: Array<{ id: number; revision_number: number; relationship_kind: RelationshipKind; happened_at: string; participant_pet_ids: number[]; observation_type: string; observation_text: string; owner_interpretation: string | null; source_episode_id: number | null; created_at: string }>;
+}
+
 export type MemoryCandidateState = "ELIGIBLE" | "ACTIVE" | "WITHDRAWN" | "STALE";
 export type MemoryDecisionType = "INCLUDE" | "WITHDRAW";
+export type ManualMemoryCategory = "ROUTINE" | "PREFERENCE" | "TRIGGER" | "COMFORT" | "HEALTH_CONTEXT" | "OTHER";
 
 export interface MemoryDecision {
   id: number;
@@ -260,6 +283,15 @@ export interface MemoryDecision {
   request_id: string;
   decision: MemoryDecisionType;
   note: string | null;
+  created_at: string;
+}
+
+export interface MemoryRevision {
+  id: number;
+  candidate_id: number;
+  revision_number: number;
+  category: ManualMemoryCategory;
+  statement: string;
   created_at: string;
 }
 
@@ -277,6 +309,7 @@ export interface MemoryCandidate {
   is_stale: boolean;
   state: MemoryCandidateState;
   decisions: MemoryDecision[];
+  revisions?: MemoryRevision[];
 }
 
 export type BaselineWindow = "7d" | "30d" | "90d" | "all";
@@ -294,7 +327,7 @@ export interface BaselineMetric {
   median?: number;
   observation_days?: number;
   status: string;
-  trend?: Record<string, unknown> | null;
+  trend?: { direction: "INCREASED" | "DECREASED" | "STABLE"; current_median?: number; comparison_median?: number; current_count?: number; comparison_count: number; threshold: number } | null;
 }
 
 export interface BaselineEvidence {
@@ -339,4 +372,17 @@ export interface Capabilities {
   model_qualification_id: string | null;
   medical_knowledge_version: string;
   medical_review_status: "PENDING" | "APPROVED";
+}
+
+export interface KnowledgeEntry {
+  id: string; species: string[]; title: string; summary: string; topics: string[];
+  source: { title: string; version: string; locator: string; url: string | null };
+}
+export interface EducationalGuidance {
+  status: "EDUCATIONAL_ONLY"; knowledge_version: string; review_status: string; review_note: string;
+  fact_summary: string[]; entries: KnowledgeEntry[]; limitations: string[];
+}
+export interface MediaAttachment {
+  id: number; episode_id: number; original_filename: string; media_type: string; byte_size: number;
+  sha256: string; status: "AVAILABLE" | "MISSING" | "CORRUPT"; observable_facts: string | null; created_at: string;
 }

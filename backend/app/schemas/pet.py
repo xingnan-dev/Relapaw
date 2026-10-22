@@ -33,6 +33,7 @@ class PetUpdate(BaseModel):
     approximate_age: str | None = None
     sex: str | None = None
     neutered: bool | None = None
+    archived: bool | None = None
 
     @model_validator(mode="after")
     def age_is_not_duplicated(self):
@@ -44,4 +45,4 @@ class PetUpdate(BaseModel):
 class PetRead(PetBase, ORMModel):
     id: int
     created_at: datetime
-
+    archived_at: datetime | None = None

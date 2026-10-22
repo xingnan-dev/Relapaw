@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     medical_knowledge_version: str = Field(default="medical-safety/v1", validation_alias="RELAPAW_MEDICAL_KNOWLEDGE_VERSION")
     medical_review_status: Literal["PENDING", "APPROVED"] = Field(default="PENDING", validation_alias="RELAPAW_MEDICAL_REVIEW_STATUS")
     static_dir: Path | None = Field(default=None, validation_alias="RELAPAW_STATIC_DIR")
+    media_dir: Path = Field(default=Path("./relapaw_media"), validation_alias="RELAPAW_MEDIA_DIR")
+    media_max_bytes: int = Field(default=25 * 1024 * 1024, ge=1, le=100 * 1024 * 1024, validation_alias="RELAPAW_MEDIA_MAX_BYTES")
     openai_api_key: SecretStr | None = Field(
         default=None,
         validation_alias=AliasChoices("OPENAI_API_KEY", "RELAPAW_OPENAI_API_KEY"),

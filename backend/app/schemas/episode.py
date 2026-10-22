@@ -14,7 +14,7 @@ class ObservationCreate(BaseModel):
     description: str = Field(min_length=1)
     source_type: ObservationSourceType
     confidence: float | None = Field(default=None, ge=0, le=1)
-    measured_value: float | None = None
+    measured_value: float | None = Field(default=None, ge=0)
     unit: str | None = Field(default=None, max_length=50)
     standardized_unit: MeasurementUnit | None = None
 

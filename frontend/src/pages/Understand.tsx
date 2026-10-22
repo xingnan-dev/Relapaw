@@ -1,8 +1,9 @@
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { createCompleteEpisode, listObservationPlans } from "../api";
 import { useCurrentPet } from "../state/CurrentPetContext";
 import type { BehaviorCategory, DangerSignal, MeasurementUnit, ObservationPlan } from "../types";
 import { JournalSticker, PetBotanicalSketch } from "../components/brand";
+import { useAuth } from "../state/AuthContext";
 
 const dangerOptions: Array<{ value: DangerSignal; label: string }> = [
   { value: "breathing_difficulty", label: "呼吸困难" },
@@ -14,6 +15,31 @@ const dangerOptions: Array<{ value: DangerSignal; label: string }> = [
 ];
 
 type RecordStep = "record-input" | "record-lenses" | "record-safety" | "record-save";
+type DraftStatus = "none" | "restored" | "saved" | "unavailable";
+
+interface RecordDraft {
+  happenedAt: string; episodeType: string; rawInput: string; observation: string;
+  behaviorCategory: BehaviorCategory; measuredValue: string; measurementUnit: MeasurementUnit;
+  interpretation: string; location: string; triggerContext: string; durationMinutes: string;
+  frequency: string; intensity: string; urgent: boolean; dangerSignals: DangerSignal[];
+  otherConcern: string; planId: string; savedAt: string;
+}
+
+function draftKey(userId: string, petId: number) { return `relapaw.recordDraft.v1:${userId}:${petId}`; }
+function safeReadDraft(key: string): RecordDraft | null {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) ?? "null") as unknown;
+    if (!value || typeof value !== "object") return null;
+    const item = value as Partial<RecordDraft>;
+    const categories: BehaviorCategory[] = ["ACTIVITY", "FEEDING", "RESTING", "SOCIAL", "ELIMINATION", "VOCALIZATION", "GROOMING", "MOBILITY", "OTHER"];
+    const units: MeasurementUnit[] = ["seconds", "minutes", "count", "meters", "grams", "milliliters"];
+    if (typeof item.rawInput !== "string" || typeof item.observation !== "string" || typeof item.happenedAt !== "string" || typeof item.episodeType !== "string") return null;
+    if (!categories.includes(item.behaviorCategory as BehaviorCategory) || !units.includes(item.measurementUnit as MeasurementUnit)) return null;
+    if (!Array.isArray(item.dangerSignals)) return null;
+    return item as RecordDraft;
+  } catch { return null; }
+}
+function safeRemoveDraft(key: string) { try { localStorage.removeItem(key); } catch { /* saving status already explains unavailable storage */ } }
 
 function localDateTimeValue() {
   const now = new Date();
@@ -21,8 +47,10 @@ function localDateTimeValue() {
   return now.toISOString().slice(0, 16);
 }
 
-export function Understand({ onSaved, onDirtyChange = () => undefined }: { onSaved: (episodeId: number) => void; onDirtyChange?: (dirty: boolean) => void }) {
+export function Understand({ onSaved, onDirtyChange = () => undefined, onSubmittingChange = () => undefined }: { onSaved: (episodeId: number) => void; onDirtyChange?: (dirty: boolean) => void; onSubmittingChange?: (submitting: boolean) => void }) {
   const { pet } = useCurrentPet();
+  const { session } = useAuth();
+  const draftOwnerId = session?.user_id ?? "local-session";
   const [happenedAt, setHappenedAt] = useState(localDateTimeValue);
   const [episodeType, setEpisodeType] = useState("behavior_change");
   const [rawInput, setRawInput] = useState("");
@@ -45,11 +73,51 @@ export function Understand({ onSaved, onDirtyChange = () => undefined }: { onSav
   const [planState, setPlanState] = useState<"loading" | "ready" | "error">("loading");
   const [planId, setPlanId] = useState("");
   const [activeStep, setActiveStep] = useState<RecordStep>("record-input");
+  const [hydratedScope, setHydratedScope] = useState("");
+  const [draftStatus, setDraftStatus] = useState<DraftStatus>("none");
+  const [draftSavedAt, setDraftSavedAt] = useState("");
+  const hydratedDraftSignature = useRef("");
+  const initialHappenedAt = useRef(happenedAt);
+  const currentDraftScope = pet ? draftKey(draftOwnerId, pet.id) : "";
+  const isDirty = draftStatus === "restored" || Boolean(rawInput || observation || measuredValue || interpretation || location || triggerContext || durationMinutes || frequency || intensity || urgent || dangerSignals.length || otherConcern || planId || episodeType !== "behavior_change" || behaviorCategory !== "ACTIVITY" || happenedAt !== initialHappenedAt.current);
   useEffect(() => {
-    const dirty = Boolean(rawInput || observation || measuredValue || interpretation || location || triggerContext || durationMinutes || frequency || intensity || urgent || otherConcern);
-    onDirtyChange(dirty);
+    onDirtyChange(isDirty);
     return () => onDirtyChange(false);
-  }, [rawInput, observation, measuredValue, interpretation, location, triggerContext, durationMinutes, frequency, intensity, urgent, otherConcern, onDirtyChange]);
+  }, [isDirty, onDirtyChange]);
+  useEffect(() => {
+    if (!pet) { setHydratedScope(""); return; }
+    const scope = draftKey(draftOwnerId, pet.id);
+    const draft = safeReadDraft(scope);
+    const restoredHappenedAt = draft?.happenedAt || localDateTimeValue(); initialHappenedAt.current = restoredHappenedAt;
+    setHappenedAt(restoredHappenedAt); setEpisodeType(draft?.episodeType || "behavior_change");
+    setRawInput(draft?.rawInput || ""); setObservation(draft?.observation || ""); setBehaviorCategory(draft?.behaviorCategory || "ACTIVITY");
+    setMeasuredValue(draft?.measuredValue || ""); setMeasurementUnit(draft?.measurementUnit || "seconds"); setInterpretation(draft?.interpretation || "");
+    setLocation(draft?.location || ""); setTriggerContext(draft?.triggerContext || ""); setDurationMinutes(draft?.durationMinutes || "");
+    setFrequency(draft?.frequency || ""); setIntensity(draft?.intensity || ""); setUrgent(draft?.urgent || false);
+    setDangerSignals(draft?.dangerSignals || []); setOtherConcern(draft?.otherConcern || ""); setPlanId(draft?.planId || "");
+    hydratedDraftSignature.current = draft ? JSON.stringify({ ...draft, savedAt: undefined }) : "";
+    setDraftSavedAt(draft?.savedAt || ""); setDraftStatus(draft ? "restored" : "none"); setHydratedScope(scope);
+  }, [pet?.id, draftOwnerId]);
+  useEffect(() => {
+    if (!pet || hydratedScope !== currentDraftScope) return;
+    const key = currentDraftScope;
+    if (!isDirty) { safeRemoveDraft(key); setDraftStatus("none"); setDraftSavedAt(""); return; }
+    const values = { happenedAt, episodeType, rawInput, observation, behaviorCategory, measuredValue, measurementUnit, interpretation, location, triggerContext, durationMinutes, frequency, intensity, urgent, dangerSignals, otherConcern, planId };
+    const signature = JSON.stringify({ ...values, savedAt: undefined });
+    if (draftStatus === "restored" && signature === hydratedDraftSignature.current) return;
+    const savedAt = new Date().toISOString();
+    const draft: RecordDraft = { ...values, savedAt };
+    try { localStorage.setItem(key, JSON.stringify(draft)); hydratedDraftSignature.current = signature; setDraftStatus("saved"); setDraftSavedAt(savedAt); }
+    catch { setDraftStatus("unavailable"); }
+  }, [pet, currentDraftScope, hydratedScope, draftStatus, isDirty, happenedAt, episodeType, rawInput, observation, behaviorCategory, measuredValue, measurementUnit, interpretation, location, triggerContext, durationMinutes, frequency, intensity, urgent, dangerSignals, otherConcern, planId]);
+
+  function discardDraft() {
+    if (!pet) return;
+    safeRemoveDraft(draftKey(draftOwnerId, pet.id));
+    const now = localDateTimeValue(); initialHappenedAt.current = now; hydratedDraftSignature.current = "";
+    setHappenedAt(now); setEpisodeType("behavior_change"); setBehaviorCategory("ACTIVITY"); setMeasurementUnit("seconds");
+    setRawInput(""); setObservation(""); setMeasuredValue(""); setInterpretation(""); setLocation(""); setTriggerContext(""); setDurationMinutes(""); setFrequency(""); setIntensity(""); setUrgent(false); setDangerSignals([]); setOtherConcern(""); setPlanId(""); setDraftStatus("none"); setDraftSavedAt("");
+  }
   const loadPlans = useCallback(async () => {
     if (!pet) return;
     setPlanState("loading");
@@ -89,8 +157,20 @@ export function Understand({ onSaved, onDirtyChange = () => undefined }: { onSav
       setError("请选择危险信号，或填写其他紧急情况。");
       return;
     }
+    if (measuredValue && (!Number.isFinite(Number(measuredValue)) || Number(measuredValue) < 0)) {
+      setError("计量值必须是大于或等于 0 的数字。");
+      return;
+    }
+    if (durationMinutes && (!Number.isInteger(Number(durationMinutes)) || Number(durationMinutes) < 0)) {
+      setError("持续时间必须是大于或等于 0 的整分钟。");
+      return;
+    }
+    if (frequency && (!Number.isInteger(Number(frequency)) || Number(frequency) < 1)) {
+      setError("发生次数必须是大于或等于 1 的整数。");
+      return;
+    }
 
-    setSubmitting(true);
+    setSubmitting(true); onSubmittingChange(true);
     try {
       const episode = await createCompleteEpisode({
         pet_id: pet.id,
@@ -122,11 +202,13 @@ export function Understand({ onSaved, onDirtyChange = () => undefined }: { onSav
           acknowledged_at: new Date().toISOString(),
         },
       });
+      safeRemoveDraft(draftKey(draftOwnerId, pet.id));
+      setDraftStatus("none"); setDraftSavedAt("");
       onSaved(episode.id);
     } catch {
       setError("记录暂时无法保存。你的输入仍保留在页面中，请重试。");
     } finally {
-      setSubmitting(false);
+      setSubmitting(false); onSubmittingChange(false);
     }
   }
 
@@ -147,6 +229,10 @@ export function Understand({ onSaved, onDirtyChange = () => undefined }: { onSav
         <li className={activeStep === "record-save" ? "active" : ""}><button type="button" aria-current={activeStep === "record-save" ? "step" : undefined} onClick={() => goToStep("record-save")}>保存</button></li>
       </ol>
       <form className="editor-form" onSubmit={(event) => void submit(event)} noValidate>
+        <fieldset className="record-freeze" disabled={submitting}>
+        {draftStatus === "restored" && <div className="inline-retry" role="status"><span>已恢复这只宠物上次未完成的草稿。</span><button type="button" onClick={discardDraft}>丢弃草稿</button></div>}
+        {draftStatus === "saved" && <p className="field-status" role="status">草稿已自动保存在本机{draftSavedAt ? ` · ${new Date(draftSavedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}</p>}
+        {draftStatus === "unavailable" && <p className="form-error" role="alert">浏览器无法保存本地草稿；请保持此页面打开并尽快提交。</p>}
         <div id="record-input" className="form-pair journal-sheet journal-sheet--time">
           <label>发生时间<input aria-label="发生时间" type="datetime-local" value={happenedAt} onChange={(event) => setHappenedAt(event.target.value)} /></label>
           <label>记录类型<select aria-label="记录类型" value={episodeType} onChange={(event) => setEpisodeType(event.target.value)}><option value="behavior_change">行为变化</option><option value="daily_observation">日常观察</option><option value="feeding_change">饮食变化</option><option value="rest_change">休息变化</option><option value="owner_concern">主人担忧</option><option value="moving_home">搬家</option><option value="new_person_or_pet">新成员或访客</option><option value="environment_change">环境变化</option><option value="routine_change">作息变化</option><option value="care_event">医疗或护理事件</option></select></label>
@@ -158,7 +244,7 @@ export function Understand({ onSaved, onDirtyChange = () => undefined }: { onSav
         </div>
         <fieldset className="form-section"><legend>可比较标签（可选计量）</legend><p>类别和标准单位用于跨记录比较；你的原始描述不会被替换。</p>
           <label>行为类别<select aria-label="行为类别" value={behaviorCategory} onChange={(event) => setBehaviorCategory(event.target.value as BehaviorCategory)}><option value="ACTIVITY">活动</option><option value="FEEDING">饮食</option><option value="RESTING">休息</option><option value="SOCIAL">社交</option><option value="ELIMINATION">排泄</option><option value="VOCALIZATION">发声</option><option value="GROOMING">梳理</option><option value="MOBILITY">行动能力</option><option value="OTHER">其他</option></select></label>
-          <div className="form-pair"><label>计量值<input aria-label="计量值" type="number" step="any" value={measuredValue} onChange={(event) => setMeasuredValue(event.target.value)} /></label><label>标准单位<select aria-label="标准单位" value={measurementUnit} disabled={!measuredValue} onChange={(event) => setMeasurementUnit(event.target.value as MeasurementUnit)}><option value="seconds">秒</option><option value="minutes">分钟</option><option value="count">次数</option><option value="meters">米</option><option value="grams">克</option><option value="milliliters">毫升</option></select></label></div>
+          <div className="form-pair"><label>计量值<input aria-label="计量值" type="number" min="0" step="any" value={measuredValue} onChange={(event) => setMeasuredValue(event.target.value)} /></label><label>标准单位<select aria-label="标准单位" value={measurementUnit} disabled={!measuredValue} onChange={(event) => setMeasurementUnit(event.target.value as MeasurementUnit)}><option value="seconds">秒</option><option value="minutes">分钟</option><option value="count">次数</option><option value="meters">米</option><option value="grams">克</option><option value="milliliters">毫升</option></select></label></div>
         </fieldset>
 
         <fieldset className="form-section journal-sheet journal-sheet--context"><legend>当时的背景（可选）</legend>
@@ -176,7 +262,8 @@ export function Understand({ onSaved, onDirtyChange = () => undefined }: { onSav
         </fieldset>
 
         {error && <p className="form-error" role="alert">{error}</p>}
-        <button id="record-save" className="primary" type="submit" disabled={submitting}>{submitting ? "正在保存…" : "保存手工记录"}</button>
+        <button id="record-save" className="primary" type="submit">{submitting ? "正在保存…" : "保存手工记录"}</button>
+        </fieldset>
       </form>
       <p className="notice">只保存你输入的内容。本阶段不会进行 AI 分析、情绪判断或医学诊断。</p>
     </section>

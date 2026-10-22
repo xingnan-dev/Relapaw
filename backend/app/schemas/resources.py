@@ -33,6 +33,26 @@ class LifeEventCreate(BaseModel):
         return require_aware_utc(value)  # type: ignore[return-value]
 
 
+class LifeEventUpdate(BaseModel):
+    event_type: LifeEventType | None = None
+    happened_at: datetime | None = None
+    description: str | None = None
+
+    @field_validator("happened_at")
+    @classmethod
+    def happened_at_is_aware(cls, value: datetime | None) -> datetime | None:
+        return require_aware_utc(value)
+
+    @model_validator(mode="after")
+    def required_fields_cannot_be_null(self):
+        provided = self.model_fields_set
+        if "event_type" in provided and self.event_type is None:
+            raise ValueError("event_type cannot be null")
+        if "happened_at" in provided and self.happened_at is None:
+            raise ValueError("happened_at cannot be null")
+        return self
+
+
 class LifeEventRead(ORMModel):
     id: int
     pet_id: int
@@ -89,6 +109,7 @@ class ObservationPlanUpdate(BaseModel):
     end_at: datetime | None = None
     goal: str | None = Field(default=None, min_length=1)
     items_to_observe: list[dict[str, Any]] | None = None
+    items: list[ObservationPlanItemCreate] | None = None
 
     @field_validator("start_at", "end_at")
     @classmethod

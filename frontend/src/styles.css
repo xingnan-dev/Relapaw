@@ -356,6 +356,10 @@ h1, h2, h3, p { overflow-wrap: anywhere; }
 .metric-card h4, .metric-card p { margin: var(--space-1) 0; }
 .metric-card summary { min-height: var(--control-min); display: flex; align-items: center; cursor: pointer; font-weight: 650; }
 .metric-card li { margin-bottom: var(--space-2); overflow-wrap: anywhere; }
+.trend-bars { display: grid; gap: var(--space-2); margin: var(--space-3) 0; }
+.trend-bars > div { display: grid; grid-template-columns: 5.5rem minmax(3rem, 1fr) 3rem; align-items: center; gap: var(--space-2); font-size: .875rem; }
+.trend-bars i { display: block; min-width: 3px; height: .75rem; border-radius: 999px; background: var(--color-accent); }
+.trend-bars b { font-variant-numeric: tabular-nums; }
 .ui-button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); font-weight: 650; }
 .ui-button--primary { color: #fff; border-color: var(--color-primary); background: var(--color-primary); }
 .ui-button--primary:hover:not(:disabled) { background: var(--color-primary-strong); }
@@ -1643,3 +1647,4 @@ input:focus, textarea:focus, select:focus { border-color: #86aaa0; background: #
 .auth-card label { display: grid; gap: .45rem; font-weight: 700; }
 .auth-card input { min-height: 2.75rem; padding: .65rem .8rem; border: 1px solid currentColor; border-radius: .65rem; font: inherit; }
 .auth-card .safety-note { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid rgba(55, 48, 39, .18); }
+.record-freeze { min-width: 0; margin: 0; padding: 0; border: 0; }

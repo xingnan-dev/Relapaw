@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNo
 import { deleteEpisode, getEpisode, getTimeline, scheduleFollowUp, updateEpisode, updateVeterinaryEscalation } from "../api";
 import { useCurrentPet } from "../state/CurrentPetContext";
 import { UnderstandingPanel } from "../components/UnderstandingPanel";
+import { EducationalGuidancePanel } from "../components/EducationalGuidancePanel";
+import { MediaPanel } from "../components/MediaPanel";
 import { useCapabilities } from "../state/CapabilitiesContext";
-import type { Episode, EpisodeUpdate, TimelineFilters, VeterinaryEscalation } from "../types";
+import type { BehaviorCategory, Episode, EpisodeUpdate, TimelineFilters, VeterinaryEscalation } from "../types";
 import { PetBotanicalSketch } from "../components/brand";
 
 type Range = "all" | "30" | "7" | "today";
@@ -31,7 +33,7 @@ function rangeFilters(range: Range): TimelineFilters {
   const now = new Date();
   if (range === "today") {
     const start = new Date(now); start.setHours(0, 0, 0, 0);
-    const end = new Date(now); end.setHours(23, 59, 59, 999);
+    const end = new Date(start); end.setDate(end.getDate() + 1);
     return { from: start.toISOString(), to: end.toISOString() };
   }
   return { from: new Date(now.getTime() - Number(range) * 86400000).toISOString(), to: now.toISOString() };
@@ -52,11 +54,22 @@ export function Timeline({ initialEpisodeId = null, onInitialEpisodeOpened = () 
   const [loadingMore, setLoadingMore] = useState(false);
   const [range, setRange] = useState<Range>("all");
   const [episodeType, setEpisodeType] = useState("");
+  const [category, setCategory] = useState<BehaviorCategory | "">("");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [selected, setSelected] = useState<Episode | null>(null);
   const [detailState, setDetailState] = useState<"idle" | "loading" | "error">("idle");
   const [mode, setMode] = useState<"list" | "detail" | "edit" | "delete" | "schedule">("list");
   const [actionError, setActionError] = useState("");
-  const filters = useMemo(() => ({ ...rangeFilters(range), ...(episodeType ? { episode_type: episodeType } : {}) }), [range, episodeType]);
+  const filters = useMemo(() => {
+    const dates = fromDate || toDate ? {
+      ...(fromDate ? { from: new Date(`${fromDate}T00:00:00`).toISOString() } : {}),
+      ...(toDate ? (() => { const end = new Date(`${toDate}T00:00:00`); end.setDate(end.getDate() + 1); return { to: end.toISOString() }; })() : {}),
+    } : rangeFilters(range);
+    return { ...dates, ...(episodeType ? { episode_type: episodeType } : {}), ...(category ? { category } : {}), ...(searchQuery ? { q: searchQuery } : {}) };
+  }, [range, episodeType, category, searchQuery, fromDate, toDate]);
 
   const load = useCallback(async () => {
     if (!pet) { setEpisodes([]); setListState("ready"); return; }
@@ -100,8 +113,14 @@ export function Timeline({ initialEpisodeId = null, onInitialEpisodeOpened = () 
 
   return <section className="timeline-page" aria-labelledby="timeline-title">
     <header className="timeline-hero"><div><p className="eyebrow">TIMELINE · 一起走过的日子</p><h2 id="timeline-title">长期记录</h2><p>每一条都保留原话、时间和来源，慢慢连成它真实的生活轨迹。</p><span className="pet-handnote">过几天再回来看看</span></div><PetBotanicalSketch scene="timeline" /><div className="timeline-count"><strong>{episodes.length}</strong><span>条记录</span></div></header>
-    <div className="timeline-filters"><label>记录类型筛选<select value={episodeType} onChange={(event) => setEpisodeType(event.target.value)}><option value="">全部类型</option>{Object.entries(episodeTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-    <div className="filter-chips" aria-label="时间范围">{ranges.map(([value, label]) => <button key={value} className={range === value ? "active" : ""} aria-pressed={range === value} onClick={() => setRange(value)}>{label}</button>)}</div></div>
+    <div className="timeline-filters">
+      <form role="search" onSubmit={(event) => { event.preventDefault(); setSearchQuery(searchInput.trim()); }}><label>搜索记录<input aria-label="搜索 Timeline" value={searchInput} maxLength={200} placeholder="搜索原始记录、观察或主人理解" onChange={(event) => setSearchInput(event.target.value)} /></label><button type="submit">搜索</button>{searchQuery && <button type="button" onClick={() => { setSearchInput(""); setSearchQuery(""); }}>清除搜索</button>}</form>
+      <label>记录类型筛选<select value={episodeType} onChange={(event) => setEpisodeType(event.target.value)}><option value="">全部类型</option>{Object.entries(episodeTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <label>行为标签<select aria-label="行为标签" value={category} onChange={(event) => setCategory(event.target.value as BehaviorCategory | "")}><option value="">全部标签</option><option value="ACTIVITY">活动</option><option value="FEEDING">饮食</option><option value="RESTING">休息</option><option value="SOCIAL">社交</option><option value="ELIMINATION">排泄</option><option value="VOCALIZATION">发声</option><option value="GROOMING">梳理</option><option value="MOBILITY">行动能力</option><option value="OTHER">其他</option></select></label>
+      <div className="form-pair"><label>开始日期<input aria-label="Timeline 开始日期" type="date" value={fromDate} max={toDate || undefined} onChange={(event) => setFromDate(event.target.value)} /></label><label>结束日期<input aria-label="Timeline 结束日期" type="date" value={toDate} min={fromDate || undefined} onChange={(event) => setToDate(event.target.value)} /></label></div>
+      {(fromDate || toDate) && <button type="button" onClick={() => { setFromDate(""); setToDate(""); }}>清除自定义日期</button>}
+      <div className="filter-chips" aria-label="时间范围">{ranges.map(([value, label]) => <button type="button" key={value} className={!fromDate && !toDate && range === value ? "active" : ""} aria-pressed={!fromDate && !toDate && range === value} onClick={() => { setFromDate(""); setToDate(""); setRange(value); }}>{label}</button>)}</div>
+    </div>
     {listState === "loading" && <p role="status">正在读取…</p>}
     {listState === "error" && <div role="alert"><p>暂时无法读取 Timeline。</p><button onClick={() => void load()}>重试</button></div>}
     {listState === "ready" && episodes.length === 0 && <p role="status">当前筛选下还没有事件记录。</p>}
@@ -129,6 +148,8 @@ function EpisodePanel({ episode, state, mode, error, aiAnalysisEnabled, onBack, 
     <Detail title="人工 Safety Check"><p>{episode.safety_check?.result || "未进行"}</p>{episode.safety_check?.danger_signals.map((signal) => <p key={signal}>{signal}</p>)}</Detail>
     {episode.veterinary_escalations?.length > 0 && <VeterinaryEscalationPanel episode={episode} onChanged={onEscalationChanged} />}
     <UnderstandingPanel episode={episode} aiAnalysisEnabled={aiAnalysisEnabled} onOpenMemory={onOpenMemory} />
+    <EducationalGuidancePanel episode={episode} />
+    <MediaPanel episodeId={episode.id} />
     <Detail title="Evidence 来源信息">{episode.evidence_references?.length ? episode.evidence_references.map((item) => <p key={item.id}>{item.source_type} · {item.field_path} · {new Date(item.observed_at).toLocaleString()}</p>) : <p>暂无来源记录</p>}</Detail>
     <Detail title="Observation Plan">{episode.plan_links?.length ? episode.plan_links.map((item) => <p key={item.id}>关联计划 #{item.plan_id}</p>) : <p>未关联观察计划</p>}</Detail>
     <Detail title="复评关系">{episode.result_of_follow_up && <p><button onClick={() => onOpenRelated(episode.result_of_follow_up!.source_episode_id)}>查看原记录</button></p>}{episode.scheduled_follow_ups?.length ? episode.scheduled_follow_ups.map((item) => <p key={item.id}>{new Date(item.scheduled_at).toLocaleString()} · {item.status}{item.result_episode_id && <button onClick={() => onOpenRelated(item.result_episode_id!)}>查看复评记录</button>}</p>) : <p>尚未安排复评</p>}</Detail>

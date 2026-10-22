@@ -6,7 +6,7 @@ from app.api.deps import require_claim, require_csrf, require_current_user, requ
 from app.api.errors import APIError
 from app.db.session import get_db
 from app.models import User
-from app.schemas.memory import ManualMemoryCreate, MemoryCandidateRead, MemoryDecisionCreate
+from app.schemas.memory import ManualMemoryCreate, ManualMemoryUpdate, MemoryCandidateRead, MemoryDecisionCreate
 from app.services.memory import (
     MemoryError,
     append_memory_decision,
@@ -15,6 +15,7 @@ from app.services.memory import (
     list_long_term_memory,
     list_memory_candidates,
     materialize_memory_candidate,
+    update_manual_memory_candidate,
 )
 
 router = APIRouter(tags=["long-term-memory"])
@@ -60,6 +61,21 @@ def create_manual_candidate(
 def read_memory_candidates(pet_id: int, db: Session = Depends(get_db), user: User = Depends(require_current_user)):
     require_pet(db, pet_id, user)
     return list_memory_candidates(db, pet_id)
+
+
+@router.patch("/memory-candidates/{candidate_id}", response_model=MemoryCandidateRead)
+def update_manual_candidate(candidate_id: int, payload: ManualMemoryUpdate, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
+    require_memory_candidate(db, candidate_id, user)
+    try:
+        candidate = update_manual_memory_candidate(db, candidate_id, payload)
+        db.commit()
+        return candidate
+    except MemoryError as exc:
+        db.rollback()
+        _raise_memory_error(exc)
+    except IntegrityError:
+        db.rollback()
+        raise APIError(409, "MEMORY_REVISION_CONFLICT", "The memory revision conflicted with another request")
 
 
 @router.get("/pets/{pet_id}/long-term-memory", response_model=list[MemoryCandidateRead])

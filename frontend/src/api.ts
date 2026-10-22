@@ -1,4 +1,4 @@
-import type { AnalysisRun, BaselineSnapshot, BaselineWindow, Capabilities, CompleteEpisodeCreate, ConfirmationDecision, Episode, EpisodeUpdate, FollowUp, FollowUpComplete, MemoryCandidate, MemoryDecisionType, ObservationPlan, ObservationPlanStatus, Pet, PetBaseline, PetCreate, TimelineFilters, TimelinePage, UserConfirmation, VeterinaryEscalation, VeterinaryEscalationStatus } from "./types";
+import type { AnalysisRun, BaselineSnapshot, BaselineWindow, Capabilities, CompleteEpisodeCreate, ConfirmationDecision, EducationalGuidance, Episode, EpisodeUpdate, FollowUp, FollowUpComplete, LifeEvent, LifeEventType, ManualMemoryCategory, MediaAttachment, MemoryCandidate, MemoryDecisionType, ObservationPlan, ObservationPlanStatus, Pet, PetBaseline, PetCreate, RelationshipEvent, RelationshipKind, RelationshipObservationType, TimelineFilters, TimelinePage, UserConfirmation, VeterinaryEscalation, VeterinaryEscalationStatus } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -118,8 +118,8 @@ export function requestAccountDeletion(): Promise<{ status: string; deletion_due
   });
 }
 
-export function listPets(): Promise<Pet[]> {
-  return request("/api/v1/pets");
+export function listPets(includeArchived = false): Promise<Pet[]> {
+  return request(`/api/v1/pets${includeArchived ? "?include_archived=true" : ""}`);
 }
 
 export function getCapabilities(): Promise<Capabilities> {
@@ -138,16 +138,38 @@ export function createPet(payload: PetCreate): Promise<Pet> {
   });
 }
 
+export function updatePet(petId: number, payload: Omit<Partial<PetCreate>, "breed" | "birth_date" | "approximate_age" | "sex" | "neutered"> & {
+  breed?: string | null;
+  birth_date?: string | null;
+  approximate_age?: string | null;
+  sex?: string | null;
+  neutered?: boolean | null;
+  archived?: boolean;
+}): Promise<Pet> {
+  return request(`/api/v1/pets/${petId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getTimeline(petId: number, page = 1, pageSize = 20, filters: TimelineFilters = {}): Promise<TimelinePage> {
   const query = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
   if (filters.from) query.set("from", filters.from);
   if (filters.to) query.set("to", filters.to);
   if (filters.episode_type) query.set("episode_type", filters.episode_type);
   if (filters.plan_id) query.set("plan_id", String(filters.plan_id));
+  if (filters.q) query.set("q", filters.q);
+  if (filters.category) query.set("category", filters.category);
   return request(`/api/v1/pets/${petId}/timeline?${query}`);
 }
 
 export function getEpisode(episodeId: number): Promise<Episode> { return request(`/api/v1/episodes/${episodeId}`); }
+export function getEducationalGuidance(episodeId: number): Promise<EducationalGuidance> { return request(`/api/v1/episodes/${episodeId}/educational-guidance`); }
+export function listMedia(episodeId: number): Promise<MediaAttachment[]> { return request(`/api/v1/episodes/${episodeId}/media`); }
+export function uploadMedia(episodeId: number, file: File): Promise<MediaAttachment> { return request(`/api/v1/episodes/${episodeId}/media`, { method: "POST", headers: { "Content-Type": file.type, "X-Filename": file.name }, body: file }); }
+export function updateMediaFacts(id: number, observable_facts: string | null): Promise<MediaAttachment> { return request(`/api/v1/media/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ observable_facts }) }); }
+export function deleteMedia(id: number): Promise<void> { return request(`/api/v1/media/${id}`, { method: "DELETE" }); }
 export function updateEpisode(episodeId: number, payload: EpisodeUpdate): Promise<Episode> {
   return request(`/api/v1/episodes/${episodeId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
 }
@@ -179,7 +201,7 @@ export function cancelFollowUp(followUpId: number): Promise<FollowUp> {
 }
 export function listObservationPlans(petId: number): Promise<ObservationPlan[]> { return request(`/api/v1/pets/${petId}/observation-plans`); }
 export function createObservationPlan(petId: number, payload: { status: ObservationPlanStatus; start_at: string; end_at: string; goal: string; items: Array<{ label: string; description?: string; is_required: boolean }> }): Promise<ObservationPlan> { return request(`/api/v1/pets/${petId}/observation-plans`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); }
-export function updateObservationPlan(planId: number, status: ObservationPlanStatus): Promise<ObservationPlan> { return request(`/api/v1/observation-plans/${planId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) }); }
+export function updateObservationPlan(planId: number, payload: ObservationPlanStatus | { goal?: string; start_at?: string; end_at?: string; items?: Array<{ label: string; description?: string; is_required: boolean }>; status?: ObservationPlanStatus }): Promise<ObservationPlan> { return request(`/api/v1/observation-plans/${planId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(typeof payload === "string" ? { status: payload } : payload) }); }
 
 export function listAnalysisRuns(episodeId: number): Promise<AnalysisRun[]> {
   return request(`/api/v1/episodes/${episodeId}/analysis-runs`);
@@ -209,16 +231,49 @@ export function getPetBaseline(petId: number): Promise<PetBaseline> {
   return request(`/api/v1/pets/${petId}/baseline`);
 }
 
+export function savePetBaseline(petId: number, payload: Omit<PetBaseline, "id" | "pet_id">): Promise<PetBaseline> {
+  return request(`/api/v1/pets/${petId}/baseline`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listLifeEvents(petId: number): Promise<LifeEvent[]> {
+  return request(`/api/v1/pets/${petId}/life-events`);
+}
+
+export function createLifeEvent(petId: number, payload: { event_type: LifeEventType; happened_at: string; description: string | null }): Promise<LifeEvent> {
+  return request(`/api/v1/pets/${petId}/life-events`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+}
+
+export function updateLifeEvent(eventId: number, payload: { event_type: LifeEventType; happened_at: string; description: string | null }): Promise<LifeEvent> {
+  return request(`/api/v1/life-events/${eventId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+}
+
+export type RelationshipEventPayload = { relationship_kind: RelationshipKind; participant_pet_ids: number[]; happened_at: string; observation_type: RelationshipObservationType; observation_text: string; owner_interpretation: string | null; source_episode_id: number | null };
+export function listRelationshipEvents(petId: number): Promise<RelationshipEvent[]> { return request(`/api/v1/pets/${petId}/relationship-events`); }
+export function createRelationshipEvent(payload: RelationshipEventPayload): Promise<RelationshipEvent> { return request("/api/v1/relationship-events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); }
+export function updateRelationshipEvent(eventId: number, payload: RelationshipEventPayload): Promise<RelationshipEvent> { return request(`/api/v1/relationship-events/${eventId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); }
+
 export function listMemoryCandidates(petId: number): Promise<MemoryCandidate[]> {
   return request(`/api/v1/pets/${petId}/memory-candidates`);
 }
 
 export function createManualMemoryCandidate(
   petId: number,
-  payload: { category: "ROUTINE" | "PREFERENCE" | "TRIGGER" | "COMFORT" | "HEALTH_CONTEXT" | "OTHER"; statement: string },
+  payload: { category: ManualMemoryCategory; statement: string },
 ): Promise<MemoryCandidate> {
   return request(`/api/v1/pets/${petId}/memory-candidates/manual`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateManualMemoryCandidate(candidateId: number, payload: { category: ManualMemoryCategory; statement: string }): Promise<MemoryCandidate> {
+  return request(`/api/v1/memory-candidates/${candidateId}`, {
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });

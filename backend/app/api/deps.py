@@ -10,7 +10,7 @@ from app.api.errors import APIError
 from app.core.config import settings
 from app.db.session import get_db
 from app.models import (
-    AnalysisRun, BaselineSnapshot, Claim, Episode, EpisodeFollowUp, MemoryCandidate,
+    AnalysisRun, BaselineSnapshot, Claim, Episode, EpisodeFollowUp, LifeEvent, MemoryCandidate,
     ObservationPlan, Pet, TermsAcceptance, User, UserSession, VeterinaryEscalation,
 )
 from app.services.sessions import token_digest
@@ -78,8 +78,10 @@ def require_csrf(
     return context
 
 
-def require_pet(db: Session, pet_id: int, user: User, *, for_update: bool = False) -> Pet:
+def require_pet(db: Session, pet_id: int, user: User, *, for_update: bool = False, allow_archived: bool = False) -> Pet:
     statement = select(Pet).where(Pet.id == pet_id, Pet.owner_user_id == user.id)
+    if not allow_archived:
+        statement = statement.where(Pet.archived_at.is_(None))
     if for_update:
         statement = statement.with_for_update()
     pet = db.scalar(statement)
@@ -90,7 +92,7 @@ def require_pet(db: Session, pet_id: int, user: User, *, for_update: bool = Fals
 
 def require_episode(db: Session, episode_id: int, user: User, *, for_update: bool = False) -> Episode:
     statement = select(Episode).join(Pet, Episode.pet_id == Pet.id).where(
-        Episode.id == episode_id, Pet.owner_user_id == user.id, Episode.deleted_at.is_(None)
+        Episode.id == episode_id, Pet.owner_user_id == user.id, Pet.archived_at.is_(None), Episode.deleted_at.is_(None)
     )
     if for_update:
         # Lock the tenant root and record in one statement. Baseline recomputation
@@ -104,7 +106,7 @@ def require_episode(db: Session, episode_id: int, user: User, *, for_update: boo
 
 def require_plan(db: Session, plan_id: int, user: User, *, for_update: bool = False) -> ObservationPlan:
     statement = select(ObservationPlan).join(Pet).where(
-        ObservationPlan.id == plan_id, Pet.owner_user_id == user.id
+        ObservationPlan.id == plan_id, Pet.owner_user_id == user.id, Pet.archived_at.is_(None)
     )
     if for_update:
         statement = statement.with_for_update()
@@ -114,11 +116,23 @@ def require_plan(db: Session, plan_id: int, user: User, *, for_update: bool = Fa
     return value
 
 
+def require_life_event(db: Session, event_id: int, user: User, *, for_update: bool = False) -> LifeEvent:
+    statement = select(LifeEvent).join(Pet).where(
+        LifeEvent.id == event_id, Pet.owner_user_id == user.id, Pet.archived_at.is_(None)
+    )
+    if for_update:
+        statement = statement.with_for_update()
+    value = db.scalar(statement)
+    if value is None:
+        raise APIError(404, "LIFE_EVENT_NOT_FOUND", "Life event not found")
+    return value
+
+
 def require_follow_up(db: Session, follow_up_id: int, user: User, *, for_update: bool = False) -> EpisodeFollowUp:
     statement = select(EpisodeFollowUp).join(
         Episode, EpisodeFollowUp.source_episode_id == Episode.id
     ).join(Pet, Episode.pet_id == Pet.id).where(
-        EpisodeFollowUp.id == follow_up_id, Pet.owner_user_id == user.id
+        EpisodeFollowUp.id == follow_up_id, Pet.owner_user_id == user.id, Pet.archived_at.is_(None)
     )
     value = db.scalar(statement)
     if value is None:
@@ -129,7 +143,7 @@ def require_follow_up(db: Session, follow_up_id: int, user: User, *, for_update:
         source = db.scalar(
             select(Episode)
             .join(Pet, Episode.pet_id == Pet.id)
-            .where(Episode.id == value.source_episode_id, Pet.owner_user_id == user.id)
+            .where(Episode.id == value.source_episode_id, Pet.owner_user_id == user.id, Pet.archived_at.is_(None))
             .with_for_update()
         )
         if source is None:
@@ -147,7 +161,7 @@ def require_follow_up(db: Session, follow_up_id: int, user: User, *, for_update:
 
 def require_escalation(db: Session, escalation_id: int, user: User, *, for_update: bool = False) -> VeterinaryEscalation:
     statement = select(VeterinaryEscalation).join(Episode).join(Pet).where(
-        VeterinaryEscalation.id == escalation_id, Pet.owner_user_id == user.id
+        VeterinaryEscalation.id == escalation_id, Pet.owner_user_id == user.id, Pet.archived_at.is_(None)
     )
     value = db.scalar(statement)
     if value is None:
@@ -166,7 +180,7 @@ def require_escalation(db: Session, escalation_id: int, user: User, *, for_updat
 
 def require_analysis_run(db: Session, run_id: int, user: User) -> AnalysisRun:
     value = db.scalar(select(AnalysisRun).join(Episode).join(Pet).where(
-        AnalysisRun.id == run_id, Pet.owner_user_id == user.id
+        AnalysisRun.id == run_id, Pet.owner_user_id == user.id, Pet.archived_at.is_(None)
     ))
     if value is None:
         raise APIError(404, "ANALYSIS_RUN_NOT_FOUND", "Analysis run not found")
@@ -175,7 +189,7 @@ def require_analysis_run(db: Session, run_id: int, user: User) -> AnalysisRun:
 
 def require_claim(db: Session, claim_id: int, user: User) -> Claim:
     value = db.scalar(select(Claim).join(AnalysisRun).join(Episode).join(Pet).where(
-        Claim.id == claim_id, Pet.owner_user_id == user.id
+        Claim.id == claim_id, Pet.owner_user_id == user.id, Pet.archived_at.is_(None)
     ))
     if value is None:
         raise APIError(404, "CLAIM_NOT_FOUND", "Claim not found")
@@ -184,7 +198,7 @@ def require_claim(db: Session, claim_id: int, user: User) -> Claim:
 
 def require_memory_candidate(db: Session, candidate_id: int, user: User) -> MemoryCandidate:
     value = db.scalar(select(MemoryCandidate).join(Pet).where(
-        MemoryCandidate.id == candidate_id, Pet.owner_user_id == user.id
+        MemoryCandidate.id == candidate_id, Pet.owner_user_id == user.id, Pet.archived_at.is_(None)
     ))
     if value is None:
         raise APIError(404, "MEMORY_CANDIDATE_NOT_FOUND", "Memory candidate not found")
@@ -193,7 +207,7 @@ def require_memory_candidate(db: Session, candidate_id: int, user: User) -> Memo
 
 def require_baseline_snapshot(db: Session, snapshot_id: int, user: User) -> BaselineSnapshot:
     value = db.scalar(select(BaselineSnapshot).join(Pet).where(
-        BaselineSnapshot.id == snapshot_id, Pet.owner_user_id == user.id
+        BaselineSnapshot.id == snapshot_id, Pet.owner_user_id == user.id, Pet.archived_at.is_(None)
     ))
     if value is None:
         raise APIError(404, "BASELINE_SNAPSHOT_NOT_FOUND", "Baseline snapshot not found")

@@ -114,6 +114,16 @@ def test_manual_memory_works_without_ai_and_preserves_owner_wording(client, pet)
     assert candidate["model_snapshot"] == {"source": "manual", "model_provider": "none"}
     assert candidate["is_stale"] is False
     assert candidate["state"] == "ELIGIBLE"
+    assert [(item["revision_number"], item["statement"]) for item in candidate["revisions"]] == [(1, statement)]
+
+    edited_statement = "Mochi settles beside the window when the blue blanket is folded there."
+    edited = client.patch(
+        f"/api/v1/memory-candidates/{candidate['id']}",
+        json={"category": "ROUTINE", "statement": edited_statement},
+    )
+    assert edited.status_code == 200
+    assert edited.json()["claim_snapshot"]["statement"] == edited_statement
+    assert [(item["revision_number"], item["category"]) for item in edited.json()["revisions"]] == [(1, "COMFORT"), (2, "ROUTINE")]
 
     included = client.post(
         f"/api/v1/memory-candidates/{candidate['id']}/decisions",
@@ -122,7 +132,7 @@ def test_manual_memory_works_without_ai_and_preserves_owner_wording(client, pet)
     assert included.status_code == 201
     assert included.json()["state"] == "ACTIVE"
     active = client.get(f"/api/v1/pets/{pet['id']}/long-term-memory").json()
-    assert active[0]["claim_snapshot"]["statement"] == statement
+    assert active[0]["claim_snapshot"]["statement"] == edited_statement
 
 
 def test_manual_memory_rejects_unknown_category(client, pet):
@@ -131,11 +141,22 @@ def test_manual_memory_rejects_unknown_category(client, pet):
         json={"category": "DIAGNOSIS", "statement": "User text"},
     )
     assert response.status_code == 422
+    blank = client.post(
+        f"/api/v1/pets/{pet['id']}/memory-candidates/manual",
+        json={"category": "OTHER", "statement": "   "},
+    )
+    assert blank.status_code == 422
 
 
 def test_include_withdraw_and_reinclude_are_append_only(client, pet):
     _, _, claim_id = create_confirmed_claim(client, pet["id"])
     candidate = client.post(f"/api/v1/claims/{claim_id}/memory-candidate").json()
+    rejected_edit = client.patch(
+        f"/api/v1/memory-candidates/{candidate['id']}",
+        json={"category": "OTHER", "statement": "Do not rewrite a claim-derived candidate"},
+    )
+    assert rejected_edit.status_code == 409
+    assert rejected_edit.json()["error"]["code"] == "MEMORY_SOURCE_READ_ONLY"
     url = f"/api/v1/memory-candidates/{candidate['id']}/decisions"
 
     include = client.post(url, json={"request_id": "include-1", "decision": "INCLUDE", "note": "Keep this"})

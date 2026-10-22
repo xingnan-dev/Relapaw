@@ -2,8 +2,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.domain.enums import MemoryDecisionType
-from app.models.entities import AnalysisRun, Claim, MemoryCandidate, MemoryDecision
-from app.schemas.memory import ManualMemoryCreate, MemoryDecisionCreate
+from app.models.entities import AnalysisRun, Claim, MemoryCandidate, MemoryDecision, MemoryRevision
+from app.schemas.memory import ManualMemoryCreate, ManualMemoryUpdate, MemoryDecisionCreate
 
 
 class MemoryError(Exception):
@@ -17,6 +17,7 @@ class MemoryError(Exception):
 def _candidate_options():
     return (
         selectinload(MemoryCandidate.decisions),
+        selectinload(MemoryCandidate.revisions),
         selectinload(MemoryCandidate.claim)
         .selectinload(Claim.analysis_run)
         .selectinload(AnalysisRun.episode),
@@ -127,6 +128,27 @@ def materialize_memory_candidate(db: Session, claim_id: int) -> MemoryCandidate:
     return get_memory_candidate(db, candidate.id)  # type: ignore[return-value]
 
 
+def update_manual_memory_candidate(db: Session, candidate_id: int, payload: ManualMemoryUpdate) -> MemoryCandidate:
+    candidate = get_memory_candidate(db, candidate_id, for_update=True)
+    if candidate is None:
+        raise MemoryError(404, "MEMORY_CANDIDATE_NOT_FOUND", "Memory candidate not found")
+    if candidate.source_type != "MANUAL":
+        raise MemoryError(409, "MEMORY_SOURCE_READ_ONLY", "Claim-derived memory candidates cannot be edited")
+    current_category = str(candidate.claim_snapshot.get("claim_type", "OTHER"))
+    current_statement = str(candidate.claim_snapshot.get("statement", ""))
+    if current_category == payload.category and current_statement == payload.statement:
+        return candidate
+    revision_number = max((item.revision_number for item in candidate.revisions), default=0) + 1
+    candidate.claim_snapshot = {
+        "claim_type": payload.category,
+        "statement": payload.statement,
+        "confidence_label": "USER_STATED",
+    }
+    db.add(MemoryRevision(candidate_id=candidate.id, revision_number=revision_number, category=payload.category, statement=payload.statement))
+    db.flush()
+    return get_memory_candidate(db, candidate.id)  # type: ignore[return-value]
+
+
 def create_manual_memory_candidate(db: Session, pet_id: int, payload: ManualMemoryCreate) -> MemoryCandidate:
     candidate = MemoryCandidate(
         pet_id=pet_id,
@@ -143,6 +165,8 @@ def create_manual_memory_candidate(db: Session, pet_id: int, payload: ManualMemo
         source_episode_updated_at=None,
     )
     db.add(candidate)
+    db.flush()
+    db.add(MemoryRevision(candidate_id=candidate.id, revision_number=1, category=payload.category, statement=payload.statement))
     db.flush()
     return get_memory_candidate(db, candidate.id)  # type: ignore[return-value]
 

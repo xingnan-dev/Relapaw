@@ -23,6 +23,7 @@ class Pet(Base):
     sex: Mapped[str | None] = mapped_column(String(30))
     neutered: Mapped[bool | None] = mapped_column(Boolean)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
     baseline: Mapped["PetBaseline | None"] = relationship(back_populates="pet", cascade="all, delete-orphan")
     episodes: Mapped[list["Episode"]] = relationship(back_populates="pet", cascade="all, delete-orphan")
@@ -174,6 +175,24 @@ class Episode(Base):
         back_populates="result_episode", foreign_keys="EpisodeFollowUp.result_episode_id", uselist=False
     )
     analysis_runs: Mapped[list["AnalysisRun"]] = relationship(back_populates="episode")
+    media_attachments: Mapped[list["MediaAttachment"]] = relationship(back_populates="episode", cascade="all, delete-orphan")
+
+
+class MediaAttachment(Base):
+    __tablename__ = "media_attachments"
+    __table_args__ = (CheckConstraint("status IN ('AVAILABLE', 'MISSING', 'CORRUPT')", name="ck_media_attachment_status"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    episode_id: Mapped[int] = mapped_column(ForeignKey("episodes.id", ondelete="CASCADE"), index=True)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    media_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="AVAILABLE")
+    observable_facts: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    episode: Mapped[Episode] = relationship(back_populates="media_attachments")
 
 
 class Observation(Base):
@@ -461,6 +480,9 @@ class MemoryCandidate(Base):
     decisions: Mapped[list["MemoryDecision"]] = relationship(
         back_populates="candidate", cascade="all, delete-orphan", order_by="MemoryDecision.id"
     )
+    revisions: Mapped[list["MemoryRevision"]] = relationship(
+        back_populates="candidate", cascade="all, delete-orphan", order_by="MemoryRevision.revision_number"
+    )
 
     @property
     def is_stale(self) -> bool:
@@ -500,6 +522,82 @@ class MemoryDecision(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     candidate: Mapped[MemoryCandidate] = relationship(back_populates="decisions")
+
+
+class MemoryRevision(Base):
+    __tablename__ = "memory_revisions"
+    __table_args__ = (UniqueConstraint("candidate_id", "revision_number", name="uq_memory_revision_number"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("memory_candidates.id", ondelete="CASCADE"), index=True)
+    revision_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    category: Mapped[str] = mapped_column(String(30), nullable=False)
+    statement: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    candidate: Mapped[MemoryCandidate] = relationship(back_populates="revisions")
+
+
+class RelationshipEvent(Base):
+    __tablename__ = "relationship_events"
+    __table_args__ = (
+        CheckConstraint("relationship_kind IN ('OWNER_PET', 'PET_PET')", name="ck_relationship_event_kind"),
+        CheckConstraint("observation_type IN ('OWNER_INTERACTION', 'SHARED_REST', 'INTERACTION', 'AVOIDANCE', 'CONFLICT', 'RESOURCE_SHARING', 'OTHER')", name="ck_relationship_observation_type"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    relationship_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    happened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    observation_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    observation_text: Mapped[str] = mapped_column(Text, nullable=False)
+    source_episode_id: Mapped[int | None] = mapped_column(ForeignKey("episodes.id", ondelete="SET NULL"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    participants: Mapped[list["RelationshipParticipant"]] = relationship(back_populates="event", cascade="all, delete-orphan", order_by="RelationshipParticipant.id")
+    interpretations: Mapped[list["RelationshipInterpretation"]] = relationship(back_populates="event", cascade="all, delete-orphan", order_by="RelationshipInterpretation.id")
+    revisions: Mapped[list["RelationshipRevision"]] = relationship(back_populates="event", cascade="all, delete-orphan", order_by="RelationshipRevision.revision_number")
+
+    @property
+    def current_owner_interpretation(self) -> str | None:
+        return self.revisions[-1].owner_interpretation if self.revisions else None
+
+
+class RelationshipParticipant(Base):
+    __tablename__ = "relationship_participants"
+    __table_args__ = (UniqueConstraint("event_id", "pet_id", name="uq_relationship_participant"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("relationship_events.id", ondelete="CASCADE"), index=True)
+    pet_id: Mapped[int] = mapped_column(ForeignKey("pets.id", ondelete="CASCADE"), index=True)
+    event: Mapped[RelationshipEvent] = relationship(back_populates="participants")
+    pet: Mapped[Pet] = relationship()
+
+
+class RelationshipInterpretation(Base):
+    __tablename__ = "relationship_interpretations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("relationship_events.id", ondelete="CASCADE"), index=True)
+    interpretation: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    event: Mapped[RelationshipEvent] = relationship(back_populates="interpretations")
+
+
+class RelationshipRevision(Base):
+    __tablename__ = "relationship_revisions"
+    __table_args__ = (UniqueConstraint("event_id", "revision_number", name="uq_relationship_revision_number"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("relationship_events.id", ondelete="CASCADE"), index=True)
+    revision_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    relationship_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    happened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    participant_pet_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False)
+    observation_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    observation_text: Mapped[str] = mapped_column(Text, nullable=False)
+    owner_interpretation: Mapped[str | None] = mapped_column(Text)
+    source_episode_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    event: Mapped[RelationshipEvent] = relationship(back_populates="revisions")
 
 
 class BaselineSnapshot(Base):

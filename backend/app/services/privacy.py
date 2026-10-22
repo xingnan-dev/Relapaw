@@ -1,5 +1,6 @@
 from datetime import UTC, date, datetime, timedelta
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import delete, or_, select
@@ -10,11 +11,13 @@ from app.core.config import Settings
 from app.models import (
     AnalysisRun, AuditEvent, BaselineEvidence, BaselineSnapshot, Claim, ClaimEvidenceReference,
     Episode, EpisodeFollowUp, EpisodePlanLink, EvidenceReference, LifeEvent,
-    MemoryCandidate, MemoryDecision, Observation, ObservationPlan, ObservationPlanItem,
+    MediaAttachment, MemoryCandidate, MemoryDecision, MemoryRevision, Observation, ObservationPlan, ObservationPlanItem,
     OwnerInterpretation, OwnerProfile, Pet, PetBaseline, SafetyCheck, TermsAcceptance,
+    RelationshipEvent, RelationshipInterpretation, RelationshipParticipant, RelationshipRevision,
     Uncertainty, User, UserConfirmation, UserIdentity, UserSession, VeterinaryEscalation,
 )
 from app.services.audit import append_audit_event
+from app.services.media_storage import cleanup_path
 
 
 def _json_value(value: Any) -> Any:
@@ -51,6 +54,8 @@ def build_account_export(db: Session, user: User, settings: Settings) -> dict[st
     candidate_ids = [item.id for item in candidates]
     snapshots = list(db.scalars(select(BaselineSnapshot).where(BaselineSnapshot.pet_id.in_(pet_ids))).all()) if pet_ids else []
     snapshot_ids = [item.id for item in snapshots]
+    relationship_events = list(db.scalars(select(RelationshipEvent).where(RelationshipEvent.owner_user_id == user.id)).all())
+    relationship_ids = [item.id for item in relationship_events]
 
     def selected(model, condition):
         return [_row(item) for item in db.scalars(select(model).where(condition)).all()]
@@ -89,6 +94,12 @@ def build_account_export(db: Session, user: User, settings: Settings) -> dict[st
         "confirmations": selected(UserConfirmation, UserConfirmation.claim_id.in_(claim_ids)) if claim_ids else [],
         "memory_candidates": [_row(item) for item in candidates],
         "memory_decisions": selected(MemoryDecision, MemoryDecision.candidate_id.in_(candidate_ids)) if candidate_ids else [],
+        "memory_revisions": selected(MemoryRevision, MemoryRevision.candidate_id.in_(candidate_ids)) if candidate_ids else [],
+        "relationship_events": [_row(item) for item in relationship_events],
+        "relationship_participants": selected(RelationshipParticipant, RelationshipParticipant.event_id.in_(relationship_ids)) if relationship_ids else [],
+        "relationship_interpretations": selected(RelationshipInterpretation, RelationshipInterpretation.event_id.in_(relationship_ids)) if relationship_ids else [],
+        "relationship_revisions": selected(RelationshipRevision, RelationshipRevision.event_id.in_(relationship_ids)) if relationship_ids else [],
+        "media_attachments": selected(MediaAttachment, MediaAttachment.episode_id.in_(episode_ids)) if episode_ids else [],
         "baseline_snapshots": [_row(item) for item in snapshots],
         "baseline_evidence": selected(BaselineEvidence, BaselineEvidence.snapshot_id.in_(snapshot_ids)) if snapshot_ids else [],
     }
@@ -105,13 +116,16 @@ def request_account_deletion(db: Session, user: User, settings: Settings) -> dat
     return due
 
 
-def redact_episode(db: Session, episode: Episode, user: User, settings: Settings) -> None:
+def redact_episode(db: Session, episode: Episode, user: User, settings: Settings) -> list[Path]:
     now = datetime.now(UTC)
     snapshot_ids = list(db.scalars(select(BaselineEvidence.snapshot_id).where(
         BaselineEvidence.episode_id == episode.id
     ).distinct()).all())
     if snapshot_ids:
         db.execute(delete(BaselineSnapshot).where(BaselineSnapshot.id.in_(snapshot_ids)))
+    attachments = list(db.scalars(select(MediaAttachment).where(MediaAttachment.episode_id == episode.id)).all())
+    media_paths = [settings.media_dir / attachment.storage_key for attachment in attachments]
+    db.execute(delete(MediaAttachment).where(MediaAttachment.episode_id == episode.id))
     db.execute(delete(AnalysisRun).where(AnalysisRun.episode_id == episode.id))
     db.execute(delete(EpisodePlanLink).where(EpisodePlanLink.episode_id == episode.id))
     db.execute(delete(VeterinaryEscalation).where(VeterinaryEscalation.episode_id == episode.id))
@@ -143,6 +157,7 @@ def redact_episode(db: Session, episode: Episode, user: User, settings: Settings
         subject_id=episode.id,
         metadata={"retained_tombstone": True, "removed_snapshot_count": len(snapshot_ids)},
     )
+    return media_paths
 
 
 def purge_due_accounts(db: Session, settings: Settings, *, now: datetime | None = None) -> int:
@@ -153,12 +168,15 @@ def purge_due_accounts(db: Session, settings: Settings, *, now: datetime | None 
         ).with_for_update(skip_locked=True)
     ).all())
     purged = 0
+    media_paths = []
     for user in users:
         append_audit_event(db, settings, actor_user_id=user.id, event_type="ACCOUNT_DATA_PURGED", subject_type="USER", subject_id=user.id)
         pet_ids = list(db.scalars(select(Pet.id).where(Pet.owner_user_id == user.id)).all())
         if pet_ids:
             episode_ids = list(db.scalars(select(Episode.id).where(Episode.pet_id.in_(pet_ids))).all())
             if episode_ids:
+                attachments = list(db.scalars(select(MediaAttachment).where(MediaAttachment.episode_id.in_(episode_ids))).all())
+                media_paths.extend(settings.media_dir / attachment.storage_key for attachment in attachments)
                 # These two references deliberately use RESTRICT so normal record
                 # deletion cannot silently destroy their lifecycle. An account purge
                 # is the explicit exception and removes them before the episodes.
@@ -171,6 +189,8 @@ def purge_due_accounts(db: Session, settings: Settings, *, now: datetime | None 
         result = db.execute(delete(User).where(User.id == user.id))
         purged += result.rowcount or 0
     db.commit()
+    for path in media_paths:
+        cleanup_path(path, settings.media_dir)
     return purged
 
 

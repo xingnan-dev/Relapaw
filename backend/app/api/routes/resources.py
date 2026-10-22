@@ -4,12 +4,12 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from app.api.deps import require_csrf, require_current_user, require_episode, require_escalation, require_pet, require_plan
+from app.api.deps import require_csrf, require_current_user, require_episode, require_escalation, require_life_event, require_pet, require_plan
 from app.api.errors import APIError
 from app.db.session import get_db
 from app.models import LifeEvent, ObservationPlan, ObservationPlanItem, PetBaseline, User, VeterinaryEscalation
 from app.schemas.resources import (
-    LifeEventCreate,
+    LifeEventCreate, LifeEventUpdate,
     LifeEventRead,
     ObservationPlanCreate,
     ObservationPlanRead,
@@ -72,6 +72,16 @@ def create_life_event(pet_id: int, payload: LifeEventCreate, db: Session = Depen
     return event
 
 
+@router.patch("/life-events/{event_id}", response_model=LifeEventRead)
+def update_life_event(event_id: int, payload: LifeEventUpdate, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
+    event = require_life_event(db, event_id, user, for_update=True)
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(event, key, value)
+    db.commit()
+    db.refresh(event)
+    return event
+
+
 @router.get("/pets/{pet_id}/observation-plans", response_model=list[ObservationPlanRead])
 def list_observation_plans(pet_id: int, db: Session = Depends(get_db), user: User = Depends(require_current_user)):
     require_pet(db, pet_id, user)
@@ -107,7 +117,7 @@ def create_observation_plan(pet_id: int, payload: ObservationPlanCreate, db: Ses
 @router.patch("/observation-plans/{plan_id}", response_model=ObservationPlanRead)
 def update_observation_plan(plan_id: int, payload: ObservationPlanUpdate, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
     plan = require_plan(db, plan_id, user, for_update=True)
-    data = payload.model_dump(exclude_unset=True)
+    data = payload.model_dump(exclude_unset=True, exclude={"items"})
     if plan.status in {"COMPLETED", "CANCELLED"}:
         raise APIError(409, "OBSERVATION_PLAN_TERMINAL", "Completed or cancelled plans cannot be changed")
     next_status = data.get("status")
@@ -122,6 +132,12 @@ def update_observation_plan(plan_id: int, payload: ObservationPlanUpdate, db: Se
         raise APIError(422, "INVALID_PLAN_DATES", "end_at must be on or after start_at")
     for key, value in data.items():
         setattr(plan, key, value)
+    if payload.items is not None:
+        if not payload.items:
+            raise APIError(422, "OBSERVATION_PLAN_ITEMS_REQUIRED", "At least one observation item is required")
+        plan.items.clear()
+        db.flush()
+        plan.items = [ObservationPlanItem(plan_id=plan.id, sort_order=index, **item.model_dump()) for index, item in enumerate(payload.items)]
     db.commit()
     db.refresh(plan)
     return plan
