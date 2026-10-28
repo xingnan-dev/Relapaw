@@ -26,16 +26,16 @@ def create_analysis_run(
     episode_id: int,
     payload: AnalysisRunCreate,
     db: Session = Depends(get_db),
-    adapter: TextUnderstandingAdapter = Depends(get_text_understanding_adapter),
     ai_enabled: bool = Depends(get_ai_enabled),
     ai_block_reason: str | None = Depends(get_ai_block_reason),
+    adapter: TextUnderstandingAdapter = Depends(get_text_understanding_adapter),
     user: User = Depends(require_current_user),
     _csrf=Depends(require_csrf),
 ):
     episode = require_episode(db, episode_id, user)
     safety_result = episode.safety_check.result if episode.safety_check is not None else None
     if safety_result == SafetyStatus.NORMAL and not ai_enabled:
-        if ai_block_reason == "MODEL_NOT_QUALIFIED":
+        if ai_block_reason:
             raise APIError(403, "MODEL_NOT_QUALIFIED", "Text Understanding model has not passed qualification")
         raise APIError(403, "FEATURE_DISABLED", "Text Understanding is disabled for this release")
     try:

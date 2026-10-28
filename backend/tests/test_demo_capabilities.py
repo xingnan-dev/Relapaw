@@ -22,17 +22,9 @@ class CountingAdapter:
         if self.fail_on_call:
             raise AssertionError("adapter must not be called")
         return {
-            "contract_version": "understanding-output/v1",
-            "claims": [{
-                "claim_type": "behavior_hypothesis",
-                "statement": "One possible explanation depends on the immediate context.",
-                "confidence_label": "LOW",
-                "evidence": [{"evidence_key": payload.evidence[0].key, "role": "SUPPORTS"}],
-                "uncertainties": [{
-                    "kind": "LIMITED_OBSERVATION",
-                    "description": "This is based on a single synthetic observation.",
-                }],
-            }],
+            "contract_version": "understanding-output/v2",
+            "observation_candidates": [{"source_quote": "Synthetic demo observation", "evidence_key": payload.evidence[0].key}],
+            "owner_interpretations": [],
         }
 
 
@@ -44,7 +36,7 @@ def episode_payload(pet_id: int, safety_result: str = "NORMAL") -> dict:
         "raw_owner_input": "Synthetic demo observation",
         "observations": [{
             "behavior_type": "pause",
-            "description": "Paused at the doorway for 20 seconds",
+            "description": "Synthetic demo observation",
             "source_type": "owner_direct",
         }],
         "owner_interpretations": [],
@@ -105,6 +97,27 @@ def test_normal_episode_cannot_create_analysis_when_feature_is_disabled(client, 
     assert response.json()["error"]["code"] == "FEATURE_DISABLED"
     assert adapter.calls == 0
     assert client.get(f"/api/v1/episodes/{episode['id']}/analysis-runs").json() == []
+
+
+def test_qualified_environment_cannot_call_provider_without_runtime_record(client, pet, monkeypatch):
+    episode = client.post("/api/v1/episodes/complete", json=episode_payload(pet["id"])).json()
+    adapter = CountingAdapter()
+    app.dependency_overrides[get_text_understanding_adapter] = lambda: adapter
+    monkeypatch.setattr("app.api.routes.capabilities.settings.ai_enabled", True)
+    monkeypatch.setattr("app.api.routes.capabilities.settings.model_qualification", "QUALIFIED")
+    monkeypatch.setattr("app.api.routes.capabilities.settings.model_qualification_id", "qwen-beijing-20261026-v7-guidance-v4")
+    monkeypatch.setattr("app.api.routes.capabilities.settings.model_provider", "qwen")
+    monkeypatch.setattr("app.api.routes.capabilities.settings.openai_model", "qwen3.7-plus-2026-05-26")
+    monkeypatch.setattr("app.api.routes.capabilities.settings.openai_base_url", "https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
+
+    response = client.post(
+        f"/api/v1/episodes/{episode['id']}/analysis-runs",
+        json={"request_id": "missing-runtime-record"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "MODEL_NOT_QUALIFIED"
+    assert adapter.calls == 0
 
 
 def test_missing_safety_still_reports_required_before_feature_flag(client, pet):

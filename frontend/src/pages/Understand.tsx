@@ -14,7 +14,7 @@ const dangerOptions: Array<{ value: DangerSignal; label: string }> = [
   { value: "other_urgent_concern", label: "其他紧急情况" },
 ];
 
-type RecordStep = "record-input" | "record-lenses" | "record-safety" | "record-save";
+type RecordStep = "record-input" | "record-facts" | "record-meaning" | "record-safety" | "record-save";
 type DraftStatus = "none" | "restored" | "saved" | "unavailable";
 
 interface RecordDraft {
@@ -47,7 +47,13 @@ function localDateTimeValue() {
   return now.toISOString().slice(0, 16);
 }
 
-export function Understand({ onSaved, onDirtyChange = () => undefined, onSubmittingChange = () => undefined }: { onSaved: (episodeId: number) => void; onDirtyChange?: (dirty: boolean) => void; onSubmittingChange?: (submitting: boolean) => void }) {
+function planRange(plan: ObservationPlan): string {
+  if (!plan.start_at && !plan.end_at) return "未设置时间范围";
+  const format = (value: string | null) => value ? new Date(value).toLocaleDateString() : "不限";
+  return `${format(plan.start_at)} 至 ${format(plan.end_at)}`;
+}
+
+export function Understand({ onSaved, onCreatePlan = () => undefined, onDirtyChange = () => undefined, onSubmittingChange = () => undefined }: { onSaved: (episodeId: number) => void; onCreatePlan?: () => void; onDirtyChange?: (dirty: boolean) => void; onSubmittingChange?: (submitting: boolean) => void }) {
   const { pet } = useCurrentPet();
   const { session } = useAuth();
   const draftOwnerId = session?.user_id ?? "local-session";
@@ -132,7 +138,9 @@ export function Understand({ onSaved, onDirtyChange = () => undefined, onSubmitt
 
   function goToStep(targetId: RecordStep) {
     setActiveStep(targetId);
-    document.getElementById(targetId)?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    const target = document.getElementById(targetId);
+    if (target instanceof HTMLDetailsElement) target.open = true;
+    target?.scrollIntoView?.({ behavior: "smooth", block: "start" });
   }
 
   function toggleSignal(signal: DangerSignal) {
@@ -145,8 +153,8 @@ export function Understand({ onSaved, onDirtyChange = () => undefined, onSubmitt
     event.preventDefault();
     setError("");
     if (!pet) { setError("请先建立宠物档案。"); return; }
-    if (!rawInput.trim() || !observation.trim()) {
-      setError("请填写原始描述和至少一条客观观察。");
+    if (!rawInput.trim()) {
+      setError("请先简单记录当时发生的事。其他内容都可以稍后补充。");
       return;
     }
     if (!happenedAt || Number.isNaN(new Date(happenedAt).getTime())) {
@@ -183,7 +191,7 @@ export function Understand({ onSaved, onDirtyChange = () => undefined, onSubmitt
         ...(location.trim() ? { location: location.trim() } : {}),
         ...(triggerContext.trim() ? { trigger_context: triggerContext.trim() } : {}),
         ...(planId ? { plan_id: Number(planId) } : {}),
-        observations: [{
+        observations: observation.trim() ? [{
           behavior_type: episodeType,
           standardized_category: behaviorCategory,
           description: observation.trim(),
@@ -193,7 +201,7 @@ export function Understand({ onSaved, onDirtyChange = () => undefined, onSubmitt
             unit: measurementUnit,
             standardized_unit: measurementUnit,
           } : {}),
-        }],
+        }] : [],
         owner_interpretations: interpretation.trim() ? [{ interpretation: interpretation.trim() }] : [],
         safety_check: {
           result: urgent ? "ESCALATE_TO_VET" : "NORMAL",
@@ -223,8 +231,9 @@ export function Understand({ onSaved, onDirtyChange = () => undefined, onSubmitt
         <PetBotanicalSketch scene="understand" />
       </header>
       <ol className="step-rail" aria-label="记录流程">
-        <li className={activeStep === "record-input" ? "active" : ""}><button type="button" aria-current={activeStep === "record-input" ? "step" : undefined} onClick={() => goToStep("record-input")}>输入</button></li>
-        <li className={activeStep === "record-lenses" ? "active" : ""}><button type="button" aria-current={activeStep === "record-lenses" ? "step" : undefined} onClick={() => goToStep("record-lenses")}>区分</button></li>
+        <li className={activeStep === "record-input" ? "active" : ""}><button type="button" aria-current={activeStep === "record-input" ? "step" : undefined} onClick={() => goToStep("record-input")}>简单记录</button></li>
+        <li className={activeStep === "record-facts" ? "active" : ""}><button type="button" aria-current={activeStep === "record-facts" ? "step" : undefined} onClick={() => goToStep("record-facts")}>补充事实</button></li>
+        <li className={activeStep === "record-meaning" ? "active" : ""}><button type="button" aria-current={activeStep === "record-meaning" ? "step" : undefined} onClick={() => goToStep("record-meaning")}>我的理解</button></li>
         <li className={activeStep === "record-safety" ? "active" : ""}><button type="button" aria-current={activeStep === "record-safety" ? "step" : undefined} onClick={() => goToStep("record-safety")}>安全</button></li>
         <li className={activeStep === "record-save" ? "active" : ""}><button type="button" aria-current={activeStep === "record-save" ? "step" : undefined} onClick={() => goToStep("record-save")}>保存</button></li>
       </ol>
@@ -233,26 +242,34 @@ export function Understand({ onSaved, onDirtyChange = () => undefined, onSubmitt
         {draftStatus === "restored" && <div className="inline-retry" role="status"><span>已恢复这只宠物上次未完成的草稿。</span><button type="button" onClick={discardDraft}>丢弃草稿</button></div>}
         {draftStatus === "saved" && <p className="field-status" role="status">草稿已自动保存在本机{draftSavedAt ? ` · ${new Date(draftSavedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}</p>}
         {draftStatus === "unavailable" && <p className="form-error" role="alert">浏览器无法保存本地草稿；请保持此页面打开并尽快提交。</p>}
-        <div id="record-input" className="form-pair journal-sheet journal-sheet--time">
-          <label>发生时间<input aria-label="发生时间" type="datetime-local" value={happenedAt} onChange={(event) => setHappenedAt(event.target.value)} /></label>
-          <label>记录类型<select aria-label="记录类型" value={episodeType} onChange={(event) => setEpisodeType(event.target.value)}><option value="behavior_change">行为变化</option><option value="daily_observation">日常观察</option><option value="feeding_change">饮食变化</option><option value="rest_change">休息变化</option><option value="owner_concern">主人担忧</option><option value="moving_home">搬家</option><option value="new_person_or_pet">新成员或访客</option><option value="environment_change">环境变化</option><option value="routine_change">作息变化</option><option value="care_event">医疗或护理事件</option></select></label>
-        </div>
-        <label>原始描述<textarea rows={5} value={rawInput} onChange={(event) => setRawInput(event.target.value)} placeholder="先原样记下你看到的情况和当时的想法，下面再将两者分开。" /></label>
-        <div id="record-lenses" className="lens-grid journal-sheet journal-sheet--lenses">
-          <label className="lens-card"><JournalSticker name="spiral" /><strong>发生了什么</strong><span>只记录可以观察、听到或计量的事实</span><textarea rows={4} aria-label="发生了什么" value={observation} onChange={(event) => setObservation(event.target.value)} /></label>
-          <label className="lens-card interpretation"><JournalSticker name="bow" /><strong>你的理解</strong><span>这是你的想法，不会被当成客观事实</span><textarea rows={4} aria-label="你的理解" value={interpretation} onChange={(event) => setInterpretation(event.target.value)} /></label>
-        </div>
-        <fieldset className="form-section"><legend>可比较标签（可选计量）</legend><p>类别和标准单位用于跨记录比较；你的原始描述不会被替换。</p>
-          <label>行为类别<select aria-label="行为类别" value={behaviorCategory} onChange={(event) => setBehaviorCategory(event.target.value as BehaviorCategory)}><option value="ACTIVITY">活动</option><option value="FEEDING">饮食</option><option value="RESTING">休息</option><option value="SOCIAL">社交</option><option value="ELIMINATION">排泄</option><option value="VOCALIZATION">发声</option><option value="GROOMING">梳理</option><option value="MOBILITY">行动能力</option><option value="OTHER">其他</option></select></label>
-          <div className="form-pair"><label>计量值<input aria-label="计量值" type="number" min="0" step="any" value={measuredValue} onChange={(event) => setMeasuredValue(event.target.value)} /></label><label>标准单位<select aria-label="标准单位" value={measurementUnit} disabled={!measuredValue} onChange={(event) => setMeasurementUnit(event.target.value as MeasurementUnit)}><option value="seconds">秒</option><option value="minutes">分钟</option><option value="count">次数</option><option value="meters">米</option><option value="grams">克</option><option value="milliliters">毫升</option></select></label></div>
+        <section id="record-input" className="journal-sheet record-simple"><h3>先简单记录</h3><p>用你自然的说法写下来即可。系统会原样保存，不要求重复填写。</p><label>原始描述<textarea rows={5} value={rawInput} onChange={(event) => setRawInput(event.target.value)} placeholder="例如：晚饭后它一直在门口走动，我有点担心。" /></label></section>
+        <details id="record-facts" className="form-section progressive-section"><summary>补充事实（可选）</summary><p>按当时能记住的程度填写即可；不知道的项目直接留空，不影响保存。</p>
+          <div className="form-pair journal-sheet journal-sheet--time">
+            <label>发生时间<input aria-label="发生时间" type="datetime-local" value={happenedAt} onChange={(event) => setHappenedAt(event.target.value)} /></label>
+            <label>这次主要记录什么<select aria-label="记录类型" value={episodeType} onChange={(event) => setEpisodeType(event.target.value)}><option value="behavior_change">行为变化</option><option value="daily_observation">日常观察</option><option value="feeding_change">饮食变化</option><option value="rest_change">休息变化</option><option value="owner_concern">我有些担心</option><option value="moving_home">搬家</option><option value="new_person_or_pet">新成员或访客</option><option value="environment_change">环境变化</option><option value="routine_change">作息变化</option><option value="care_event">医疗或护理事件</option></select></label>
+          </div>
+          <label className="lens-card"><JournalSticker name="spiral" /><strong>具体看到了什么？</strong><span>写动作、声音或能量到的变化，不用解释原因</span><textarea rows={4} aria-label="发生了什么" value={observation} onChange={(event) => setObservation(event.target.value)} /></label>
+        <details className="advanced-fields"><summary>补充次数、时长或当时情境（可选）</summary>
+        <fieldset className="form-section direct-facts"><legend>它持续了多久、发生了几次？</legend>
+          <div className="form-triple"><label>大约持续几分钟<input aria-label="持续时间（分钟）" type="number" inputMode="numeric" min="0" step="1" placeholder="例如 2" value={durationMinutes} onChange={(event) => setDurationMinutes(event.target.value)} /></label><label>大约发生几次<input aria-label="发生次数" type="number" inputMode="numeric" min="1" step="1" placeholder="例如 3" value={frequency} onChange={(event) => setFrequency(event.target.value)} /></label><label>变化有多明显<select aria-label="强度" value={intensity} onChange={(event) => setIntensity(event.target.value)}><option value="">不确定</option><option value="1">很轻微</option><option value="2">比较轻</option><option value="3">比较明显</option><option value="4">很明显</option><option value="5">非常明显</option></select></label></div>
         </fieldset>
-
-        <fieldset className="form-section journal-sheet journal-sheet--context"><legend>当时的背景（可选）</legend>
-          <label>关联观察计划<select aria-label="关联观察计划" value={planId} disabled={planState === "loading"} onChange={(event) => setPlanId(event.target.value)}><option value="">{planState === "loading" ? "正在读取计划…" : "不关联计划"}</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.goal}</option>)}</select></label>
-          {planState === "error" && <div role="alert" className="inline-retry"><span>观察计划读取失败；仍可不关联计划并继续记录。</span><button type="button" onClick={() => void loadPlans()}>重试计划</button></div>}
+        <fieldset className="form-section journal-sheet journal-sheet--context"><legend>当时在哪里、刚发生了什么？</legend>
           <div className="form-pair"><label>地点<input value={location} onChange={(event) => setLocation(event.target.value)} /></label><label>刚发生了什么<input aria-label="触发背景" value={triggerContext} onChange={(event) => setTriggerContext(event.target.value)} /></label></div>
-          <div className="form-triple"><label>持续时间（分钟）<input type="number" min="0" step="1" value={durationMinutes} onChange={(event) => setDurationMinutes(event.target.value)} /></label><label>发生次数<input type="number" min="1" step="1" value={frequency} onChange={(event) => setFrequency(event.target.value)} /></label><label>强度<select value={intensity} onChange={(event) => setIntensity(event.target.value)}><option value="">未填写</option><option value="1">1 很轻</option><option value="2">2</option><option value="3">3 中等</option><option value="4">4</option><option value="5">5 很明显</option></select></label></div>
         </fieldset>
+        <details className="comparison-fields"><summary>用于长期比较的精确数据（进阶，可选）</summary><fieldset className="form-section"><legend>你明确量到的数据</legend><p>只有实际计时、称重或计数时才需要填写。</p>
+          <label>想比较哪一方面<select aria-label="行为类别" value={behaviorCategory} onChange={(event) => setBehaviorCategory(event.target.value as BehaviorCategory)}><option value="ACTIVITY">活动</option><option value="FEEDING">饮食</option><option value="RESTING">休息</option><option value="SOCIAL">社交</option><option value="ELIMINATION">排泄</option><option value="VOCALIZATION">发声</option><option value="GROOMING">梳理</option><option value="MOBILITY">行动能力</option><option value="OTHER">其他</option></select></label>
+          <div className="form-pair"><label>实际量到的数值<input aria-label="计量值" type="number" inputMode="decimal" min="0" step="any" value={measuredValue} onChange={(event) => setMeasuredValue(event.target.value)} /></label><label>单位<select aria-label="标准单位" value={measurementUnit} disabled={!measuredValue} onChange={(event) => setMeasurementUnit(event.target.value as MeasurementUnit)}><option value="seconds">秒</option><option value="minutes">分钟</option><option value="count">次数</option><option value="meters">米</option><option value="grams">克</option><option value="milliliters">毫升</option></select></label></div>
+        </fieldset></details></details></details>
+
+        <details id="record-meaning" className="form-section progressive-section"><summary>我的理解（可选）</summary><p>这里记录你的想法。它不会被当成客观事实，也不会覆盖原始描述。</p><label className="lens-card interpretation"><JournalSticker name="bow" /><strong>我的理解</strong><textarea rows={4} aria-label="你的理解" value={interpretation} onChange={(event) => setInterpretation(event.target.value)} /></label></details>
+
+        <section className="form-section plan-link-section" aria-labelledby="plan-link-title"><h3 id="plan-link-title">加入观察计划（可选）</h3><p>计划把同一主题的多天记录放在一起比较；不加入时，这就是一条独立记录。</p>
+          {planState === "loading" && <p role="status">正在读取观察计划…</p>}
+          {planState === "error" && <div role="alert" className="inline-retry"><span>观察计划读取失败；仍可作为独立记录继续保存。</span><button type="button" onClick={() => void loadPlans()}>重试计划</button></div>}
+          {planState === "ready" && plans.length === 0 && <div className="empty-state"><strong>这是一条独立记录</strong><p>当前没有进行中的观察计划。</p><button type="button" onClick={onCreatePlan}>新建观察计划</button></div>}
+          {planState === "ready" && plans.length > 0 && <fieldset><legend>选择记录归属</legend><label className="plan-choice"><input type="radio" name="plan" value="" checked={!planId} onChange={() => setPlanId("")} /><span><strong>这是一条独立记录</strong><small>不加入任何计划</small></span></label>{plans.map((plan) => <label className="plan-choice" key={plan.id}><input type="radio" name="plan" value={plan.id} checked={planId === String(plan.id)} onChange={() => setPlanId(String(plan.id))} /><span><strong>{plan.goal}</strong><small>{planRange(plan)}{plan.items.length ? ` · ${plan.items.map((item) => item.label).join("、")}` : ""}</small></span></label>)}</fieldset>}
+          {planState === "ready" && plans.length > 0 && <button type="button" className="text-button" onClick={onCreatePlan}>新建观察计划</button>}
+        </section>
 
         <fieldset id="record-safety" className="form-section safety-section"><legend>人工安全确认</legend>
           <p>Relapaw 不进行诊断，也不替代兽医。请根据你实际看到的情况选择。</p>
@@ -262,7 +279,8 @@ export function Understand({ onSaved, onDirtyChange = () => undefined, onSubmitt
         </fieldset>
 
         {error && <p className="form-error" role="alert">{error}</p>}
-        <button id="record-save" className="primary" type="submit">{submitting ? "正在保存…" : "保存手工记录"}</button>
+        <p className="record-media-note">保存后可以在记录详情中继续添加照片或视频。</p>
+        <button id="record-save" className="primary" type="submit">{submitting ? "正在保存…" : "保存这条记录"}</button>
         </fieldset>
       </form>
       <p className="notice">只保存你输入的内容。本阶段不会进行 AI 分析、情绪判断或医学诊断。</p>

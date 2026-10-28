@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import require_current_user, require_episode
 from app.api.errors import APIError
 from app.db.session import get_db
-from app.domain.educational_knowledge import KNOWLEDGE_SET
+from app.domain.educational_knowledge import KNOWLEDGE_SET, approved_knowledge_entries
 from app.models import User
 from app.schemas.knowledge import EducationalGuidanceRead, KnowledgeSetRead
 
@@ -22,9 +22,7 @@ def get_educational_guidance(episode_id: int, db: Session = Depends(get_db), use
     if episode.safety_check is None or episode.safety_check.result != "NORMAL":
         raise APIError(409, "EDUCATION_BLOCKED_BY_SAFETY", "Educational guidance is unavailable until the current safety result is NORMAL")
     species = episode.pet.species.strip().lower()
-    known_species = {value for entry in KNOWLEDGE_SET["entries"] for value in entry["species"] if value != "other"}
-    match_species = species if species in known_species else "other"
-    entries = [entry for entry in KNOWLEDGE_SET["entries"] if match_species in entry["species"]]
+    entries = approved_knowledge_entries(species=species)
     facts = [f"Observation: {item.description}" for item in episode.observations]
     for label, value in (("Time", episode.happened_at.isoformat()), ("Location", episode.location), ("Duration seconds", episode.duration_seconds), ("Frequency", episode.frequency_count)):
         if value is not None:

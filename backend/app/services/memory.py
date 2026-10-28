@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.domain.enums import MemoryDecisionType
-from app.models.entities import AnalysisRun, Claim, MemoryCandidate, MemoryDecision, MemoryRevision
+from app.models.entities import AnalysisRun, Claim, MemoryCandidate, MemoryCandidateMediaReference, MemoryDecision, MemoryRevision
 from app.schemas.memory import ManualMemoryCreate, ManualMemoryUpdate, MemoryDecisionCreate
 
 
@@ -18,6 +18,7 @@ def _candidate_options():
     return (
         selectinload(MemoryCandidate.decisions),
         selectinload(MemoryCandidate.revisions),
+        selectinload(MemoryCandidate.media_references).selectinload(MemoryCandidateMediaReference.attachment),
         selectinload(MemoryCandidate.claim)
         .selectinload(Claim.analysis_run)
         .selectinload(AnalysisRun.episode),
@@ -78,6 +79,12 @@ def materialize_memory_candidate(db: Session, claim_id: int) -> MemoryCandidate:
     )
     if claim is None:
         raise MemoryError(404, "CLAIM_NOT_FOUND", "Claim not found")
+    if claim.candidate_kind != "LEGACY_INTERPRETATION":
+        raise MemoryError(
+            409,
+            "EXTRACTION_NOT_MEMORY_ELIGIBLE",
+            "Verbatim observation and owner-interpretation extractions cannot become long-term memory",
+        )
     if claim.status != "CONFIRMED" or not claim.confirmations or claim.confirmations[-1].decision != "CONFIRMED":
         raise MemoryError(409, "CLAIM_NOT_CONFIRMED", "Only a confirmed claim can become a memory candidate")
     if claim.analysis_run.status != "COMPLETED":

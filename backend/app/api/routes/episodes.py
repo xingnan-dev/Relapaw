@@ -18,7 +18,7 @@ from app.schemas.episode import (
     OwnerInterpretationCreate,
     OwnerInterpretationRead,
 )
-from app.services.records import create_complete_episode, update_episode_aggregate
+from app.services.records import append_episode_revision, create_complete_episode, update_episode_aggregate
 from app.services.timeline import get_episode_detail
 from app.core.config import settings
 from app.services.privacy import redact_episode
@@ -65,7 +65,11 @@ def delete_episode(episode_id: int, db: Session = Depends(get_db), user: User = 
 def create_complete_episode_route(payload: CompleteEpisodeCreate, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
     require_pet(db, payload.pet_id, user, for_update=True)
     if payload.plan_id is not None:
-        require_plan(db, payload.plan_id, user)
+        plan = require_plan(db, payload.plan_id, user)
+        if plan.pet_id != payload.pet_id:
+            raise APIError(409, "PLAN_PET_MISMATCH", "Observation plan belongs to another pet")
+        if plan.status != "ACTIVE":
+            raise APIError(409, "OBSERVATION_PLAN_NOT_ACTIVE", "Only an active observation plan can receive new records")
     try:
         episode = create_complete_episode(db, payload)
         db.commit()
@@ -80,6 +84,8 @@ def create_episode(payload: EpisodeCreate, db: Session = Depends(get_db), user: 
     require_pet(db, payload.pet_id, user, for_update=True)
     episode = Episode(**payload.model_dump())
     db.add(episode)
+    db.flush()
+    append_episode_revision(db, episode, "CREATED")
     db.commit()
     db.refresh(episode)
     return episode
@@ -101,6 +107,7 @@ def add_observation(episode_id: int, payload: ObservationCreate, db: Session = D
         recorded_at=now,
     ))
     episode.updated_at = now
+    append_episode_revision(db, episode, "OBSERVATION_ADDED")
     db.commit()
     db.refresh(observation)
     return observation
@@ -124,6 +131,7 @@ def add_owner_interpretation(
         recorded_at=now,
     ))
     episode.updated_at = now
+    append_episode_revision(db, episode, "INTERPRETATION_ADDED")
     db.commit()
     db.refresh(interpretation)
     return interpretation

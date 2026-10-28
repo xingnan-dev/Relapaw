@@ -1,0 +1,49 @@
+{
+  "version": "qualification-run/2026-10-26/v3",
+  "subject": {
+    "provider": "qwen",
+    "model": "qwen3.7-plus-2026-05-26",
+    "region": "cn-beijing",
+    "dataset": "live-qualification/qwen-beijing/v3",
+    "prompt_contracts": [
+      "text-understanding/v7-verbatim-fact-extraction",
+      "assistant-guidance/v3-item-citations-safety-boundary"
+    ]
+  },
+  "execution": {
+    "requests_sent": 4,
+    "retries": 0,
+    "database_writes": 0,
+    "automatic_hard_gate": "FAILED",
+    "human_review": "NOT_APPLICABLE_TO_FAILED_BUNDLE",
+    "qualification_status": "NOT_QUALIFIED"
+  },
+  "contract_results": [
+    {
+      "contract": "text-understanding/v7",
+      "automatic_gate": "PASSED",
+      "human_review": "PASSED",
+      "cases_passed": 2,
+      "cases_total": 2,
+      "latencies_ms": [3404.149, 2884.444]
+    },
+    {
+      "contract": "assistant-guidance/v3",
+      "automatic_gate": "FAILED",
+      "human_review": "NOT_APPLICABLE_TO_REJECTED_CASE",
+      "cases_passed": 1,
+      "cases_total": 2,
+      "finding_codes": [
+        "MODEL_KNOWLEDGE_CITATION_MISSING"
+      ],
+      "latencies_ms": [9387.165, 9795.119]
+    }
+  ],
+  "privacy": {
+    "raw_provider_outputs_retained": false,
+    "api_key_retained": false,
+    "email_or_user_data_used": false,
+    "inputs": "synthetic"
+  },
+  "decision": "The v7/v3 dual-contract bundle is NOT_QUALIFIED and remains disabled. This authorization is exhausted; no retry or further live request is authorized."
+}

@@ -13,6 +13,7 @@ class SessionRead(BaseModel):
     user_id: str
     status: str
     consent_required: bool
+    onboarding_complete: bool
 
 
 class CsrfRead(BaseModel):

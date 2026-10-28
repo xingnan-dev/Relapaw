@@ -7,6 +7,7 @@ from pydantic import Field, field_validator
 from app.domain.enums import MemoryCandidateState, MemoryDecisionType
 from app.schemas.analysis import StrictModel
 from app.schemas.common import ORMModel
+from app.schemas.media import MediaAttachmentRead
 
 
 class MemoryDecisionCreate(StrictModel):
@@ -29,6 +30,17 @@ class ManualMemoryCreate(StrictModel):
 
 class ManualMemoryUpdate(ManualMemoryCreate):
     pass
+
+
+class MemoryMediaReferenceCreate(StrictModel):
+    media_attachment_id: int = Field(gt=0)
+
+
+class MemoryMediaReferenceRead(ORMModel):
+    id: int
+    media_attachment_id: int
+    created_at: datetime
+    attachment: MediaAttachmentRead
 
 
 class MemoryRevisionRead(ORMModel):
@@ -74,6 +86,7 @@ class MemoryCandidateRead(ORMModel):
     state: MemoryCandidateState
     decisions: list[MemoryDecisionRead] = Field(default_factory=list)
     revisions: list[MemoryRevisionRead] = Field(default_factory=list)
+    media_references: list[MemoryMediaReferenceRead] = Field(default_factory=list)
 
     @field_validator("source_episode_updated_at", "created_at")
     @classmethod

@@ -11,11 +11,22 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models import IdentityInvitation, TermsAcceptance, User, UserIdentity, UserSession
 from app.schemas.auth import ChallengeRequest, ChallengeVerify, CsrfRead, SessionRead
-from app.services.identity import IdentityVerificationError, LocalInviteIdentityAdapter
+from app.services.identity import (
+    IdentityDeliveryError,
+    IdentityRateLimitError,
+    IdentityVerificationError,
+    build_identity_adapter,
+)
 from app.services.sessions import create_session, get_or_create_user, token_digest
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-identity_adapter = LocalInviteIdentityAdapter(settings)
+identity_adapter = build_identity_adapter(settings)
+
+
+def _request_source(request: Request) -> str:
+    # Deliberately use the direct peer. Forwarded headers are untrusted until a
+    # reviewed proxy configuration supplies a trusted client-address boundary.
+    return request.client.host if request.client is not None else "unknown"
 
 
 def _consent_required(db: Session, user_id: str) -> bool:
@@ -63,11 +74,16 @@ def _require_valid_locked_invitation(
 
 
 @router.post("/otp/request", status_code=202)
-def request_challenge(payload: ChallengeRequest, request: Request):
+def request_challenge(payload: ChallengeRequest, request: Request, db: Session = Depends(get_db)):
     if request.headers.get("origin") not in settings.cors_origins:
         raise APIError(403, "ORIGIN_FORBIDDEN", "Request origin is not allowed")
     # Origin validation is intentionally identical for known and unknown addresses.
-    identity_adapter.request_challenge(payload.email)
+    try:
+        identity_adapter.request_challenge(payload.email, db=db, source=_request_source(request))
+    except IdentityRateLimitError as exc:
+        raise APIError(429, "OTP_RATE_LIMITED", "Please wait before requesting another code") from exc
+    except IdentityDeliveryError as exc:
+        raise APIError(503, "OTP_DELIVERY_UNAVAILABLE", "The code could not be sent; please try again") from exc
     return {"status": "challenge_requested"}
 
 
@@ -81,7 +97,11 @@ def verify_challenge(
     if request.headers.get("origin") not in settings.cors_origins:
         raise APIError(403, "ORIGIN_FORBIDDEN", "Request origin is not allowed")
     try:
-        identity = identity_adapter.verify_challenge(payload.email, payload.code)
+        identity = identity_adapter.verify_challenge(
+            payload.email, payload.code, db=db, source=_request_source(request)
+        )
+    except IdentityRateLimitError as exc:
+        raise APIError(429, "OTP_RATE_LIMITED", "Please wait before trying again") from exc
     except IdentityVerificationError as exc:
         raise APIError(401, "CHALLENGE_INVALID", "Challenge verification failed") from exc
     invitation = db.scalar(select(IdentityInvitation).where(
@@ -163,13 +183,29 @@ def verify_challenge(
     _session, raw_token, _raw_csrf = create_session(db, user, settings, request.headers.get("user-agent"))
     db.commit()
     _set_cookie(response, raw_token)
-    return SessionRead(user_id=user.id, status=user.status, consent_required=_consent_required(db, user.id))
+    return SessionRead(user_id=user.id, status=user.status, consent_required=_consent_required(db, user.id), onboarding_complete=user.onboarding_completed_at is not None)
 
 
 @router.get("/session", response_model=SessionRead)
 def read_session(response: Response, context: AuthContext = Depends(require_auth_context), db: Session = Depends(get_db)):
     response.headers["Cache-Control"] = "no-store"
-    return SessionRead(user_id=context.user.id, status=context.user.status, consent_required=_consent_required(db, context.user.id))
+    return SessionRead(user_id=context.user.id, status=context.user.status, consent_required=_consent_required(db, context.user.id), onboarding_complete=context.user.onboarding_completed_at is not None)
+
+
+@router.post("/onboarding/complete", response_model=SessionRead)
+def complete_onboarding(
+    context: AuthContext = Depends(require_csrf),
+    db: Session = Depends(get_db),
+):
+    if _consent_required(db, context.user.id):
+        raise APIError(403, "CONSENT_REQUIRED", "Current Terms and Privacy Notice must be accepted")
+    user = db.scalar(select(User).where(User.id == context.user.id).with_for_update())
+    if user is None or user.status != "ACTIVE":
+        raise APIError(401, "SESSION_INVALID", "Session is invalid or expired")
+    if user.onboarding_completed_at is None:
+        user.onboarding_completed_at = datetime.now(UTC)
+        db.commit()
+    return SessionRead(user_id=user.id, status=user.status, consent_required=False, onboarding_complete=True)
 
 
 @router.post("/csrf", response_model=CsrfRead)

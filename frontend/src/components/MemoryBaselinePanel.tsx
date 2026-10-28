@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { ApiError, createLifeEvent, createManualMemoryCandidate, decideMemoryCandidate, getLatestBaselineSnapshot, getPetBaseline, getTimeline, listLifeEvents, listMemoryCandidates, recomputeBaselineSnapshot, savePetBaseline, updateLifeEvent, updateManualMemoryCandidate } from "../api";
-import type { BaselineMetric, BaselineSnapshot, BaselineWindow, Episode, LifeEvent, LifeEventType, ManualMemoryCategory, MemoryCandidate, MemoryDecisionType, PetBaseline, TimelinePage } from "../types";
+import { ApiError, addMemoryMediaReference, createLifeEvent, createManualMemoryCandidate, decideMemoryCandidate, deleteLifeEvent, getLatestBaselineSnapshot, getPetBaseline, getTimeline, listLifeEvents, listMemoryCandidates, listPetMedia, recomputeBaselineSnapshot, removeMemoryMediaReference, savePetBaseline, updateLifeEvent, updateManualMemoryCandidate } from "../api";
+import type { BaselineMetric, BaselineSnapshot, BaselineWindow, Episode, LifeEvent, LifeEventType, ManualMemoryCategory, MediaAttachment, MemoryCandidate, MemoryDecisionType, PetBaseline, TimelinePage } from "../types";
+import { MediaPanel } from "./MediaPanel";
+import { PetMediaGallery } from "./PetMediaGallery";
 import { Button, StatusNotice, Surface } from "./ui";
 
 const windows: Array<{ value: BaselineWindow; label: string }> = [
@@ -29,13 +31,16 @@ function newRequestId(prefix: string) {
   return globalThis.crypto?.randomUUID?.() ?? `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-export function MemoryBaselinePanel({ petId }: { petId: number }) {
+export function MemoryBaselinePanel({ petId, section = "all" }: { petId: number; section?: "profile" | "changes" | "all" }) {
   return <div className="memory-baseline-stack">
-    <ManualBaseline key={`manual-${petId}`} petId={petId} />
-    <MemoryCandidates key={`memory-${petId}`} petId={petId} />
-    <LifeEvents key={`events-${petId}`} petId={petId} />
-    <EvidenceGuidance key={`guidance-${petId}`} petId={petId} />
-    <QuantitativeBaseline key={`quantitative-${petId}`} petId={petId} />
+    {(section === "profile" || section === "all") && <ManualBaseline key={`manual-${petId}`} petId={petId} />}
+    {(section === "changes" || section === "all") && <>
+      <MemoryCandidates key={`memory-${petId}`} petId={petId} />
+      <LifeEvents key={`events-${petId}`} petId={petId} />
+      <PetMediaGallery key={`media-gallery-${petId}`} petId={petId} />
+      <EvidenceGuidance key={`guidance-${petId}`} petId={petId} />
+      <QuantitativeBaseline key={`quantitative-${petId}`} petId={petId} />
+    </>}
   </div>;
 }
 
@@ -61,17 +66,17 @@ function ManualBaseline({ petId }: { petId: number }) {
       return [key, draft[typedKey].trim() ? { summary: draft[typedKey].trim() } : null];
     })) as Omit<PetBaseline, "id" | "pet_id">;
     try { const value = await savePetBaseline(petId, payload); setBaseline(value); setDraft(baselineToDraft(value)); setState("ready"); setEditing(false); }
-    catch { setSaveError("Baseline 保存失败；你的编辑内容仍保留，请重试。"); }
+    catch { setSaveError("日常模式保存失败；你的编辑内容仍保留，请重试。"); }
     finally { setSaving(false); }
   }
-  return <section aria-labelledby="manual-baseline-title"><h3 id="manual-baseline-title">人工档案 Baseline</h3>
-    <p className="section-help">由用户明确填写的日常模式，与模型候选和量化快照分开保存。</p>
-    {state === "loading" && <p role="status">正在读取人工 Baseline…</p>}
-    {state === "empty" && <StatusNotice>尚未填写人工 Baseline。</StatusNotice>}
+  return <section aria-labelledby="manual-baseline-title"><h3 id="manual-baseline-title">平时的样子</h3>
+    <p className="section-help">由你明确填写的日常模式，与系统候选和数据快照分开保存。</p>
+    {state === "loading" && <p role="status">正在读取日常模式…</p>}
+    {state === "empty" && <StatusNotice>尚未填写平时的样子。</StatusNotice>}
     {state === "error" && <StatusNotice tone="warning" role="alert" action={<Button onClick={() => void load()}>重试</Button>}>读取失败，页面其他状态已保留。</StatusNotice>}
-    {!editing && state === "empty" && <Button onClick={() => setEditing(true)}>创建人工 Baseline</Button>}
-    {!editing && state === "ready" && baseline && <><Surface className="baseline-definition-list"><dl>{Object.entries(baselineLabels).map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{baselineSummary(baseline[key as keyof typeof baselineLabels])}</dd></div>)}</dl></Surface><Button onClick={() => setEditing(true)}>编辑人工 Baseline</Button></>}
-    {editing && <form className="editor-form" onSubmit={(event) => void save(event)}>{Object.entries(baselineLabels).map(([key, label]) => <label key={key}>{label}<textarea maxLength={2000} value={draft[key as keyof typeof baselineLabels]} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))} /></label>)}<div className="button-row"><Button type="submit" busy={saving}>{saving ? "正在保存…" : "保存 Baseline"}</Button><Button type="button" onClick={() => { setEditing(false); setSaveError(""); setDraft(baseline ? baselineToDraft(baseline) : emptyBaselineDraft()); }}>取消</Button></div>{saveError && <StatusNotice tone="danger" role="alert">{saveError}</StatusNotice>}</form>}
+    {!editing && state === "empty" && <Button onClick={() => setEditing(true)}>填写平时的样子</Button>}
+    {!editing && state === "ready" && baseline && <><Surface className="baseline-definition-list"><dl>{Object.entries(baselineLabels).map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{baselineSummary(baseline[key as keyof typeof baselineLabels])}</dd></div>)}</dl></Surface><Button onClick={() => setEditing(true)}>编辑平时的样子</Button></>}
+    {editing && <form className="editor-form" onSubmit={(event) => void save(event)}>{Object.entries(baselineLabels).map(([key, label]) => <label key={key}>{label}<textarea maxLength={2000} value={draft[key as keyof typeof baselineLabels]} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))} /></label>)}<div className="button-row"><Button type="submit" busy={saving}>{saving ? "正在保存…" : "保存日常模式"}</Button><Button type="button" onClick={() => { setEditing(false); setSaveError(""); setDraft(baseline ? baselineToDraft(baseline) : emptyBaselineDraft()); }}>取消</Button></div>{saveError && <StatusNotice tone="danger" role="alert">{saveError}</StatusNotice>}</form>}
   </section>;
 }
 
@@ -90,6 +95,8 @@ function baselineToDraft(value: PetBaseline): Record<keyof typeof baselineLabels
 
 function MemoryCandidates({ petId }: { petId: number }) {
   const [items, setItems] = useState<MemoryCandidate[]>([]);
+  const [availableMedia, setAvailableMedia] = useState<MediaAttachment[]>([]);
+  const generation = useRef(0);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [category, setCategory] = useState<ManualMemoryCategory>("ROUTINE");
   const [statement, setStatement] = useState("");
@@ -99,9 +106,10 @@ function MemoryCandidates({ petId }: { petId: number }) {
   const [categoryFilter, setCategoryFilter] = useState<ManualMemoryCategory | "ALL">("ALL");
   const [stateFilter, setStateFilter] = useState<MemoryCandidate["state"] | "ALL">("ALL");
   const load = useCallback(async () => {
+    const current = ++generation.current;
     setState("loading");
-    try { setItems(await listMemoryCandidates(petId)); setState("ready"); }
-    catch { setState("error"); }
+    try { const [candidates, media] = await Promise.all([listMemoryCandidates(petId), listPetMedia(petId)]); if (current === generation.current) { setItems(candidates); setAvailableMedia(media); setState("ready"); } }
+    catch { if (current === generation.current) setState("error"); }
   }, [petId]);
   useEffect(() => { void load(); }, [load]);
   async function createManual(event: FormEvent) {
@@ -111,6 +119,7 @@ function MemoryCandidates({ petId }: { petId: number }) {
     setCreating(true); setCreateError("");
     try {
       const candidate = await createManualMemoryCandidate(petId, { category, statement: wording });
+      generation.current += 1;
       setItems((current) => [candidate, ...current]);
       setStatement("");
       setState("ready");
@@ -121,8 +130,8 @@ function MemoryCandidates({ petId }: { petId: number }) {
     const matchesText = item.claim_snapshot.statement.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
     return matchesText && (categoryFilter === "ALL" || item.claim_snapshot.claim_type === categoryFilter) && (stateFilter === "ALL" || item.state === stateFilter);
   });
-  return <section aria-labelledby="memory-title"><h3 id="memory-title">长期记忆候选</h3>
-    <p className="section-help">可以由你直接写下，也可以来自你已确认的 Claim；建立候选不等于纳入，撤回也不会改写原始记录。</p>
+  return <section aria-labelledby="memory-title"><h3 id="memory-title">待你确认的长期记忆</h3>
+    <p className="section-help">可以由你直接写下，也可以来自你已确认的系统候选；建立候选不等于纳入，撤回也不会改写原始记录。</p>
     <form className="editor-form" onSubmit={(event) => void createManual(event)}>
       <label>记忆类别<select value={category} onChange={(event) => setCategory(event.target.value as ManualMemoryCategory)}>{Object.entries(memoryCategoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label>你的原话<textarea required maxLength={2000} value={statement} onChange={(event) => setStatement(event.target.value)} placeholder="例如：它在窗边放着蓝色毯子时更容易安定下来。" /></label>
@@ -136,13 +145,13 @@ function MemoryCandidates({ petId }: { petId: number }) {
     </div>
     {state === "loading" && <p role="status">正在读取长期记忆候选…</p>}
     {state === "error" && <StatusNotice tone="warning" role="alert" action={<Button onClick={() => void load()}>重试</Button>}>候选读取失败。</StatusNotice>}
-    {state === "ready" && items.length === 0 && <StatusNotice>尚无长期记忆候选。请先在 Episode 的已确认 Claim 中建立候选。</StatusNotice>}
+    {state === "ready" && items.length === 0 && <StatusNotice>尚无长期记忆候选。你可以直接写下，或从已确认的系统候选中建立。</StatusNotice>}
     {state === "ready" && items.length > 0 && visibleItems.length === 0 && <StatusNotice>没有符合当前搜索与筛选条件的长期记忆。</StatusNotice>}
-    {state === "ready" && visibleItems.map((item) => <CandidateCard key={item.id} candidate={item} onChange={(next) => setItems((current) => current.map((value) => value.id === next.id ? next : value))} />)}
+    {state === "ready" && visibleItems.map((item) => <CandidateCard key={item.id} candidate={item} availableMedia={availableMedia} onChange={(next) => setItems((current) => current.map((value) => value.id === next.id ? next : value))} />)}
   </section>;
 }
 
-function CandidateCard({ candidate, onChange }: { candidate: MemoryCandidate; onChange: (candidate: MemoryCandidate) => void }) {
+function CandidateCard({ candidate, availableMedia, onChange }: { candidate: MemoryCandidate; availableMedia: MediaAttachment[]; onChange: (candidate: MemoryCandidate) => void }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const retry = useRef<{ decision: MemoryDecisionType; id: string } | null>(null);
@@ -151,6 +160,7 @@ function CandidateCard({ candidate, onChange }: { candidate: MemoryCandidate; on
   const [editStatement, setEditStatement] = useState(candidate.claim_snapshot.statement);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState("");
+  const [selectedMediaId, setSelectedMediaId] = useState("");
   const revisions = candidate.revisions ?? [];
   const action: MemoryDecisionType | null = candidate.is_stale ? (candidate.decisions.at(-1)?.decision === "INCLUDE" ? "WITHDRAW" : null) : candidate.state === "ACTIVE" ? "WITHDRAW" : "INCLUDE";
   async function decide(decision: MemoryDecisionType) {
@@ -169,6 +179,10 @@ function CandidateCard({ candidate, onChange }: { candidate: MemoryCandidate; on
     catch { setEditError("修改保存失败；你的编辑内容仍保留，请重试。"); }
     finally { setSavingEdit(false); }
   }
+  async function attachMedia() { if (!selectedMediaId) return; setPending(true); setError(""); try { onChange(await addMemoryMediaReference(candidate.id, Number(selectedMediaId))); setSelectedMediaId(""); } catch { setError("媒体引用保存失败；原文件和候选均未改变。"); } finally { setPending(false); } }
+  async function detachMedia(id: number) { setPending(true); setError(""); try { onChange(await removeMemoryMediaReference(candidate.id, id)); } catch { setError("媒体引用移除失败；原文件仍保留。"); } finally { setPending(false); } }
+  const referencedIds = new Set((candidate.media_references ?? []).map((item) => item.media_attachment_id));
+  const selectableMedia = availableMedia.filter((item) => !referencedIds.has(item.id));
   return <Surface tone={candidate.state === "ACTIVE" ? "emphasis" : "default"} className="memory-card">
     <div className="state-heading"><strong>候选 #{candidate.id}</strong><span>{memoryStateLabels[candidate.state]}{candidate.is_stale && candidate.state !== "STALE" ? " · 来源已变化" : ""}</span></div>
     <p>{candidate.claim_snapshot.statement}</p>
@@ -176,7 +190,8 @@ function CandidateCard({ candidate, onChange }: { candidate: MemoryCandidate; on
     {candidate.source_type === "MANUAL" && !editing && <Button onClick={() => setEditing(true)}>编辑手工记忆</Button>}
     {editing && <form className="editor-form" onSubmit={(event) => void saveEdit(event)}><label>类别<select value={editCategory} onChange={(event) => setEditCategory(event.target.value as ManualMemoryCategory)}>{Object.entries(memoryCategoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>用户原话<textarea required maxLength={2000} value={editStatement} onChange={(event) => setEditStatement(event.target.value)} /></label><div className="button-row"><Button type="submit" busy={savingEdit}>{savingEdit ? "正在保存…" : "保存修改"}</Button><Button type="button" onClick={() => { setEditing(false); setEditError(""); setEditCategory(candidate.claim_snapshot.claim_type as ManualMemoryCategory); setEditStatement(candidate.claim_snapshot.statement); }}>取消</Button></div>{editError && <StatusNotice tone="danger" role="alert">{editError}</StatusNotice>}</form>}
     {revisions.length > 0 && <details><summary>修订历史（{revisions.length}）</summary><ol>{revisions.slice().reverse().map((revision) => <li key={revision.id}>版本 {revision.revision_number} · {memoryCategoryLabels[revision.category]} · {new Date(revision.created_at).toLocaleString()}<br />{revision.statement}</li>)}</ol></details>}
-    {candidate.is_stale && <StatusNotice tone="warning">来源 Episode 已变化；该候选不可重新纳入，但仍可撤回既有纳入决定。</StatusNotice>}
+    <details><summary>引用具体记录中的媒体（{candidate.media_references?.length ?? 0}）</summary><p>这里只建立引用；媒体仍属于原始记录。删除引用不会删除原文件，删除原文件会自动移除引用。</p>{candidate.media_references?.map((reference) => <article key={reference.id} className="media-card"><strong>{reference.attachment.original_filename}</strong>{reference.attachment.media_type.startsWith("image/") && <img className="media-preview" src={`/api/v1/media/${reference.media_attachment_id}/content`} alt={reference.attachment.owner_caption || "候选引用的记录图片"} />}{reference.attachment.media_type.startsWith("video/") && <video className="media-preview" src={`/api/v1/media/${reference.media_attachment_id}/content`} controls preload="metadata" />}<p>{reference.attachment.owner_caption || "未填写主人说明"}</p><Button disabled={pending} onClick={() => void detachMedia(reference.media_attachment_id)}>移除引用</Button></article>)}{selectableMedia.length > 0 ? <div className="button-row"><label>选择已有记录媒体<select value={selectedMediaId} onChange={(event) => setSelectedMediaId(event.target.value)}><option value="">请选择</option>{selectableMedia.map((media) => <option key={media.id} value={media.id}>{media.original_filename} · {media.episode_id ? `记录 #${media.episode_id}` : media.life_event_id ? `生活事件 #${media.life_event_id}` : `关系事件 #${media.relationship_event_id}`}</option>)}</select></label><Button disabled={pending || !selectedMediaId} onClick={() => void attachMedia()}>引用到候选</Button></div> : <p>没有可引用的其他媒体；请先在具体记录、生活事件或关系事件中上传。</p>}</details>
+    {candidate.is_stale && <StatusNotice tone="warning">来源记录已变化；该候选不可重新纳入，但仍可撤回既有纳入决定。</StatusNotice>}
     {action && <Button variant={action === "WITHDRAW" ? "danger" : "primary"} busy={pending} onClick={() => void decide(action)}>{pending ? "正在保存…" : action === "INCLUDE" ? (candidate.state === "WITHDRAWN" ? "重新纳入长期记忆" : "纳入长期记忆") : "撤回长期记忆"}</Button>}
     {error && <StatusNotice tone="danger" role="alert">{error}</StatusNotice>}
   </Surface>;
@@ -221,13 +236,14 @@ function LifeEvents({ petId }: { petId: number }) {
     finally { setSaving(false); }
   }
   function edit(item: LifeEvent) { setEditingId(item.id); setEventType(item.event_type); setHappenedAt(toLocalInput(item.happened_at)); setDescription(item.description ?? ""); setSaveError(""); }
+  async function remove(item: LifeEvent) { if (!confirm("删除这条生活事件及其媒体？时间邻近的普通记录不会被删除。")) return; setSaving(true); try { await deleteLifeEvent(item.id); if (editingId === item.id) resetForm(); await load(); } catch { setSaveError("生活事件删除失败，原数据仍保留。"); } finally { setSaving(false); } }
   return <section aria-labelledby="life-events-title"><h3 id="life-events-title">生活事件与时间邻近记录</h3>
     <p className="section-help">事件与“前 7 天（含起点）至后 7 天（不含上界）”的已记录事实按时间并列；时间接近不代表事件导致了行为变化。</p>
     <form className="editor-form" onSubmit={(event) => void save(event)}><label>事件类型<select value={eventType} onChange={(event) => setEventType(event.target.value as LifeEventType)}>{Object.entries(lifeEventLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>发生时间<input required type="datetime-local" value={happenedAt} onChange={(event) => setHappenedAt(event.target.value)} /></label><label>事实描述<textarea maxLength={2000} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="只写发生了什么，不推断原因" /></label><div className="button-row"><Button type="submit" busy={saving}>{saving ? "正在保存…" : editingId === null ? "添加生活事件" : "保存修改"}</Button>{editingId !== null && <Button type="button" onClick={resetForm}>取消编辑</Button>}</div>{saveError && <StatusNotice tone="danger" role="alert">{saveError}</StatusNotice>}</form>
     {state === "loading" && <p role="status">正在读取生活事件与记录…</p>}
     {state === "error" && <StatusNotice tone="warning" role="alert" action={<Button onClick={() => void load()}>重试</Button>}>生活事件读取失败。</StatusNotice>}
     {state === "ready" && items.length === 0 && <StatusNotice>尚无生活事件。添加后可查看时间邻近的事实记录。</StatusNotice>}
-    {items.map((item) => { const nearby = nearbyPages[item.id]; return <Surface key={item.id} className="memory-card"><div className="state-heading"><strong>{lifeEventLabels[item.event_type]}</strong><span>{new Date(item.happened_at).toLocaleString()}</span></div><p>{item.description || "未填写描述"}</p><Button onClick={() => edit(item)}>编辑事件</Button><details><summary>前后 7 天的事实记录（{nearby?.total ?? 0}）</summary>{!nearby || nearby.total === 0 ? <p>这段时间暂无已记录事实。</p> : <ul>{nearby.items.map((episode) => <li key={episode.id}>{new Date(episode.happened_at).toLocaleString()} · {episode.raw_owner_input}</li>)}</ul>}{nearby?.has_more && <p className="meta-line">共有 {nearby.total} 条；此处展示最近 100 条，可在 Timeline 按日期查看完整记录。</p>}<p className="meta-line">这里只展示时间邻近，不生成因果解释或诊断。</p></details></Surface>; })}
+    {items.map((item) => { const nearby = nearbyPages[item.id]; return <Surface key={item.id} className="memory-card"><div className="state-heading"><strong>{lifeEventLabels[item.event_type]}</strong><span>{new Date(item.happened_at).toLocaleString()}</span></div><p>{item.description || "未填写描述"}</p><div className="button-row"><Button onClick={() => edit(item)}>编辑事件</Button><Button disabled={saving} onClick={() => void remove(item)}>删除生活事件</Button></div><details><summary>照片和视频证据</summary><MediaPanel source={{ type: "life-event", id: item.id, petId }} title="这次生活事件的媒体证据" /></details><details><summary>前后 7 天的事实记录（{nearby?.total ?? 0}）</summary>{!nearby || nearby.total === 0 ? <p>这段时间暂无已记录事实。</p> : <ul>{nearby.items.map((episode) => <li key={episode.id}>{new Date(episode.happened_at).toLocaleString()} · {episode.raw_owner_input}</li>)}</ul>}{nearby?.has_more && <p className="meta-line">共有 {nearby.total} 条；此处展示最近 100 条，可在 Timeline 按日期查看完整记录。</p>}<p className="meta-line">这里只展示时间邻近，不生成因果解释或诊断。</p></details></Surface>; })}
   </section>;
 }
 
@@ -274,7 +290,7 @@ function EvidenceGuidance({ petId }: { petId: number }) {
   if (new Set(recent.map((item) => item.happened_at.slice(0, 10))).size < 3) suggestions.push("可在不同日期重复观察；当前日期覆盖较少，不宜概括稳定规律。");
   return <section aria-labelledby="evidence-guidance-title"><h3 id="evidence-guidance-title">重要变化与观察提示</h3>
     <p className="section-help">固定规则直接读取事实记录；不调用 AI，不把记录次数当作症状严重程度，也不作因果或诊断判断。</p>
-    <Surface tone="subtle" className="memory-card"><h4>相对最新记录的两个 7 天窗口</h4><p className="meta-line">锚点：{new Date(anchor).toLocaleString()}</p><p>记录数量：当前窗口 {recentPage.total} 条，前一窗口 {previousPage.total} 条。{recentPage.total === previousPage.total ? "数量没有变化。" : "数量存在差异；这只反映记录频次。"}</p><details><summary>查看已加载来源（{recent.length + previous.length}）</summary><ul>{[...recent.map((item) => ({ item, window: "current" })), ...previous.map((item) => ({ item, window: "previous" }))].map(({ item, window }) => <li key={`${window}-${item.id}`}>Episode #{item.id} · {new Date(item.happened_at).toLocaleString()} · {item.raw_owner_input}</li>)}</ul>{(recentPage.has_more || previousPage.has_more) && <p>来源超过 100 条；数量使用完整查询计数，列表仅展示每个窗口最近 100 条。</p>}</details></Surface>
+    <Surface tone="subtle" className="memory-card"><h4>相对最新记录的两个 7 天窗口</h4><p className="meta-line">锚点：{new Date(anchor).toLocaleString()}</p><p>记录数量：当前窗口 {recentPage.total} 条，前一窗口 {previousPage.total} 条。{recentPage.total === previousPage.total ? "数量没有变化。" : "数量存在差异；这只反映记录频次。"}</p><details><summary>查看已加载来源（{recent.length + previous.length}）</summary><ul>{[...recent.map((item) => ({ item, window: "current" })), ...previous.map((item) => ({ item, window: "previous" }))].map(({ item, window }) => <li key={`${window}-${item.id}`}>记录 #{item.id} · {new Date(item.happened_at).toLocaleString()} · {item.raw_owner_input}</li>)}</ul>{(recentPage.has_more || previousPage.has_more) && <p>来源超过 100 条；数量使用完整查询计数，列表仅展示每个窗口最近 100 条。</p>}</details></Surface>
     <Surface className="memory-card"><h4>可能还需要观察什么</h4>{suggestions.length === 0 ? <p>已加载样本的时间、地点、持续时长和发生前背景较完整；可以继续用相同字段记录。</p> : <ul>{suggestions.map((item) => <li key={item}>{item}</li>)}</ul>}<p className="meta-line">提示基于当前窗口已加载的最多 100 条记录；它们只反映记录完整性，不是对宠物状态的解释。</p></Surface>
   </section>;
 }
@@ -297,12 +313,12 @@ function QuantitativeBaseline({ petId }: { petId: number }) {
     catch { setRecomputeError("重算失败；当前已显示的快照保持不变，请重试。"); }
     finally { setRecomputing(false); }
   }
-  return <section aria-labelledby="quantitative-baseline-title"><h3 id="quantitative-baseline-title">量化 Baseline</h3>
+  return <section aria-labelledby="quantitative-baseline-title"><h3 id="quantitative-baseline-title">数据中的长期变化</h3>
     <p className="section-help">由已记录数据按固定算法计算，不是模型判断；每个快照冻结时间边界与来源。</p>
-    <div className="window-tabs" aria-label="Baseline 时间窗口">{windows.map((item) => <Button key={item.value} variant={item.value === window ? "primary" : "secondary"} aria-pressed={item.value === window} onClick={() => setWindow(item.value)}>{item.label}</Button>)}</div>
+    <div className="window-tabs" aria-label="长期变化时间范围">{windows.map((item) => <Button key={item.value} variant={item.value === window ? "primary" : "secondary"} aria-pressed={item.value === window} onClick={() => setWindow(item.value)}>{item.label}</Button>)}</div>
     {state === "loading" && <p role="status">正在读取 {windowLabels[window]}快照…</p>}
     {state === "error" && <StatusNotice tone="warning" role="alert" action={<Button onClick={() => void load()}>重试读取</Button>}>快照读取失败。</StatusNotice>}
-    {state === "empty" && <StatusNotice title="尚无快照" action={<Button busy={recomputing} onClick={() => void recompute()}>计算 {windowLabels[window]} Baseline</Button>}>不会用空数据推测趋势。</StatusNotice>}
+    {state === "empty" && <StatusNotice title="尚无快照" action={<Button busy={recomputing} onClick={() => void recompute()}>计算 {windowLabels[window]} 数据快照</Button>}>不会用空数据推测趋势。</StatusNotice>}
     {snapshot && <SnapshotView snapshot={snapshot} onRecompute={recompute} recomputing={recomputing} />}
     {recomputeError && <StatusNotice tone="danger" role="alert" action={<Button onClick={() => void recompute()}>重试重算</Button>}>{recomputeError}</StatusNotice>}
   </section>;

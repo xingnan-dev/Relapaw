@@ -2,24 +2,29 @@ import json
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
 from app.api.deps import require_current_user
 from app.core.config import settings
+from app.db.session import get_db
 from app.schemas.capabilities import CapabilitiesRead
 from app.demo.dataset_v1 import DATASET_VERSION, SCHEMA_REVISION
+from app.services.model_qualification import QualificationDecision, runtime_qualification_decision
 
 
 router = APIRouter(tags=["capabilities"])
 
 
-def get_ai_enabled() -> bool:
-    return settings.ai_enabled and settings.model_qualification == "QUALIFIED"
+def get_ai_decision(db: Session = Depends(get_db)) -> QualificationDecision:
+    return runtime_qualification_decision(db, settings)
 
 
-def get_ai_block_reason() -> str | None:
-    if settings.ai_enabled and settings.model_qualification != "QUALIFIED":
-        return "MODEL_NOT_QUALIFIED"
-    return None
+def get_ai_enabled(decision: QualificationDecision = Depends(get_ai_decision)) -> bool:
+    return decision.enabled
+
+
+def get_ai_block_reason(decision: QualificationDecision = Depends(get_ai_decision)) -> str | None:
+    return decision.reason
 
 
 def get_demo_dataset_version() -> str | None:

@@ -1,0 +1,38 @@
+{
+  "version": "live-qualification/qwen-beijing/v4-guidance-only",
+  "qualification_subject": {
+    "provider": "qwen",
+    "model": "qwen3.7-plus-2026-05-26",
+    "region": "cn-beijing",
+    "prompt_contracts": ["assistant-guidance/v4-versioned-claim-citations"],
+    "reuses_evidence": {
+      "contract": "text-understanding/v7-verbatim-fact-extraction",
+      "evidence": "qwen_beijing_qualification_run_20261026_v3.json",
+      "cases_passed": 2,
+      "cases_total": 2
+    }
+  },
+  "budget": {"max_requests": 2, "max_output_tokens_per_request": 1600, "timeout_seconds": 30, "max_retries": 0, "persist_to_product_database": false},
+  "understanding_cases": [],
+  "guidance_cases": [
+    {
+      "id": "qwen-qualification-guidance-zh-v4",
+      "input": {
+        "mode": "RECORD_REVIEW", "pet_id": 930001, "species": "dog",
+        "current_record": {"episode_id": 930001, "happened_at": "2026-10-26T10:00:00Z", "raw_owner_input": "小狗散步回家后在门口朝外站了约二十秒，随后自行进屋。我觉得它可能还想在外面待一会儿。", "observations": ["在门口朝外站立约二十秒，随后自行进屋"], "owner_interpretations": ["我觉得它可能还想在外面待一会儿"], "safety_status": "NORMAL"},
+        "recent_records": [], "recent_records_truncated": false,
+        "controlled_knowledge": [{"id": "recording-consistency", "version": "v1", "citation_id": "knowledge:recording-consistency@v1", "title": "一致记录", "summary": "使用相同方式记录时间、地点、持续时长和可观察行为，有助于比较变化，但不能据此确定原因。", "source_title": "Relapaw 受控记录指南", "source_locator": "internal://recording-consistency/v1"}]
+      }
+    },
+    {
+      "id": "qwen-qualification-guidance-en-truncated-v4",
+      "input": {
+        "mode": "RECENT_CHANGE_COMPARISON", "pet_id": 930001, "species": "dog",
+        "current_record": {"episode_id": 930002, "happened_at": "2026-10-26T11:00:00Z", "raw_owner_input": "After dinner, the dog looked toward the hallway twice and then settled on the mat. I think it may have heard something.", "observations": ["Looked toward the hallway twice, then settled on the mat"], "owner_interpretations": ["I think it may have heard something"], "safety_status": "NORMAL"},
+        "recent_records": [{"episode_id": 930001, "happened_at": "2026-10-20T10:00:00Z", "raw_owner_input": "The dog stood at the doorway for twenty seconds and then came inside.", "observations": ["Stood at the doorway for twenty seconds, then came inside"], "owner_interpretations": [], "safety_status": "NORMAL"}],
+        "recent_records_truncated": true,
+        "controlled_knowledge": [{"id": "recording-consistency", "version": "v1", "citation_id": "knowledge:recording-consistency@v1", "title": "Consistent recording", "summary": "Recording time, place, duration and observable behavior consistently supports comparison but cannot determine a cause.", "source_title": "Relapaw controlled recording guide", "source_locator": "internal://recording-consistency/v1"}]
+      }
+    }
+  ]
+}

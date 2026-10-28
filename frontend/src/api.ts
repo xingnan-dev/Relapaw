@@ -1,4 +1,4 @@
-import type { AnalysisRun, BaselineSnapshot, BaselineWindow, Capabilities, CompleteEpisodeCreate, ConfirmationDecision, EducationalGuidance, Episode, EpisodeUpdate, FollowUp, FollowUpComplete, LifeEvent, LifeEventType, ManualMemoryCategory, MediaAttachment, MemoryCandidate, MemoryDecisionType, ObservationPlan, ObservationPlanStatus, Pet, PetBaseline, PetCreate, RelationshipEvent, RelationshipKind, RelationshipObservationType, TimelineFilters, TimelinePage, UserConfirmation, VeterinaryEscalation, VeterinaryEscalationStatus } from "./types";
+import type { AnalysisRun, AssistantGuidanceRun, BaselineSnapshot, BaselineWindow, Capabilities, CaregiverProfile, CompleteEpisodeCreate, ConfirmationDecision, EducationalGuidance, Episode, EpisodeUpdate, FollowUp, FollowUpComplete, GuidanceMode, InteractionPatternCandidate, InteractionPatternDecisionAction, LifeEvent, LifeEventType, ManualMemoryCategory, MediaAttachment, MemoryCandidate, MemoryDecisionType, ObservationPlan, ObservationPlanStatus, Pet, PetAvatar, PetBaseline, PetCreate, RelationshipEvent, RelationshipKind, RelationshipObservationType, TimelineFilters, TimelinePage, UserConfirmation, VeterinaryEscalation, VeterinaryEscalationStatus } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -41,7 +41,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export interface AuthSession { user_id: string; status: "ACTIVE"; consent_required: boolean; }
+export interface AuthSession { user_id: string; status: "ACTIVE"; consent_required: boolean; onboarding_complete: boolean; }
 
 export interface PrivacyNotice {
   terms_version: string;
@@ -74,6 +74,10 @@ export function logout(csrfToken: string): Promise<void> {
   return request("/api/v1/auth/logout", {
     method: "POST", headers: { "X-CSRF-Token": csrfToken },
   });
+}
+
+export function completeAccountOnboarding(): Promise<AuthSession> {
+  return request("/api/v1/auth/onboarding/complete", { method: "POST" });
 }
 
 export function getPrivacyNotice(): Promise<PrivacyNotice> {
@@ -138,12 +142,30 @@ export function createPet(payload: PetCreate): Promise<Pet> {
   });
 }
 
-export function updatePet(petId: number, payload: Omit<Partial<PetCreate>, "breed" | "birth_date" | "approximate_age" | "sex" | "neutered"> & {
+export function uploadPetAvatar(petId: number, file: File): Promise<PetAvatar> {
+  return request(`/api/v1/pets/${petId}/avatar`, { method: "PUT", headers: { "Content-Type": file.type, "X-Filename": encodeURIComponent(file.name) }, body: file });
+}
+export function deletePetAvatar(petId: number): Promise<void> { return request(`/api/v1/pets/${petId}/avatar`, { method: "DELETE" }); }
+export function petAvatarUrl(petId: number, version?: string): string { return `/api/v1/pets/${petId}/avatar/content${version ? `?v=${encodeURIComponent(version)}` : ""}`; }
+export function getCaregiverProfile(): Promise<CaregiverProfile> { return request("/api/v1/owner-profile"); }
+export function saveCaregiverProfile(payload: Omit<CaregiverProfile, "id" | "ai_context_consent_updated_at">): Promise<CaregiverProfile> {
+  return request("/api/v1/owner-profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+}
+export function deleteCaregiverProfile(): Promise<void> { return request("/api/v1/owner-profile", { method: "DELETE" }); }
+
+export function updatePet(petId: number, payload: Omit<Partial<PetCreate>, "breed" | "birth_date" | "approximate_age" | "sex" | "neutered" | "weight_kg" | "known_conditions" | "medications" | "allergies" | "living_environment" | "veterinarian_confirmed_facts" | "owner_observations"> & {
   breed?: string | null;
   birth_date?: string | null;
   approximate_age?: string | null;
   sex?: string | null;
   neutered?: boolean | null;
+  weight_kg?: number | null;
+  known_conditions?: string[] | null;
+  medications?: string[] | null;
+  allergies?: string[] | null;
+  living_environment?: string | null;
+  veterinarian_confirmed_facts?: Array<Record<string, string>> | null;
+  owner_observations?: Record<string, string> | null;
   archived?: boolean;
 }): Promise<Pet> {
   return request(`/api/v1/pets/${petId}`, {
@@ -167,9 +189,18 @@ export function getTimeline(petId: number, page = 1, pageSize = 20, filters: Tim
 export function getEpisode(episodeId: number): Promise<Episode> { return request(`/api/v1/episodes/${episodeId}`); }
 export function getEducationalGuidance(episodeId: number): Promise<EducationalGuidance> { return request(`/api/v1/episodes/${episodeId}/educational-guidance`); }
 export function listMedia(episodeId: number): Promise<MediaAttachment[]> { return request(`/api/v1/episodes/${episodeId}/media`); }
-export function uploadMedia(episodeId: number, file: File): Promise<MediaAttachment> { return request(`/api/v1/episodes/${episodeId}/media`, { method: "POST", headers: { "Content-Type": file.type, "X-Filename": file.name }, body: file }); }
+export type MediaSource = { type: "episode" | "life-event" | "relationship-event"; id: number; petId?: number };
+function mediaSourceUrl(source: MediaSource): string { return source.type === "episode" ? `/api/v1/episodes/${source.id}/media` : source.type === "life-event" ? `/api/v1/life-events/${source.id}/media` : `/api/v1/relationship-events/${source.id}/media`; }
+export function listSourceMedia(source: MediaSource): Promise<MediaAttachment[]> { return request(mediaSourceUrl(source)); }
+export function listPetMedia(petId: number): Promise<MediaAttachment[]> { return request(`/api/v1/pets/${petId}/media`); }
+export function uploadSourceMedia(source: MediaSource, file: File, durationSeconds?: number): Promise<MediaAttachment> { const headers: Record<string, string> = { "Content-Type": file.type, "X-Filename": encodeURIComponent(file.name) }; if (source.petId) headers["X-Pet-ID"] = String(source.petId); if (durationSeconds) headers["X-Media-Duration-Seconds"] = String(Math.ceil(durationSeconds)); return request(mediaSourceUrl(source), { method: "POST", headers, body: file }); }
+export function uploadMedia(episodeId: number, file: File): Promise<MediaAttachment> { return uploadSourceMedia({ type: "episode", id: episodeId }, file); }
 export function updateMediaFacts(id: number, observable_facts: string | null): Promise<MediaAttachment> { return request(`/api/v1/media/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ observable_facts }) }); }
+export function updateMediaMetadata(id: number, payload: { captured_at: string | null; owner_caption: string | null; change_summary: string | null }): Promise<MediaAttachment> { return request(`/api/v1/media/${id}/metadata`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); }
+export function decideMediaCandidate(id: number, action: "CONFIRM" | "REJECT" | "WITHDRAW"): Promise<MediaAttachment> { return request(`/api/v1/media/${id}/candidate`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) }); }
 export function deleteMedia(id: number): Promise<void> { return request(`/api/v1/media/${id}`, { method: "DELETE" }); }
+export function addMemoryMediaReference(candidateId: number, mediaAttachmentId: number): Promise<MemoryCandidate> { return request(`/api/v1/memory-candidates/${candidateId}/media-references`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ media_attachment_id: mediaAttachmentId }) }); }
+export function removeMemoryMediaReference(candidateId: number, mediaAttachmentId: number): Promise<MemoryCandidate> { return request(`/api/v1/memory-candidates/${candidateId}/media-references/${mediaAttachmentId}`, { method: "DELETE" }); }
 export function updateEpisode(episodeId: number, payload: EpisodeUpdate): Promise<Episode> {
   return request(`/api/v1/episodes/${episodeId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
 }
@@ -215,6 +246,16 @@ export function createAnalysisRun(episodeId: number, requestId: string): Promise
   });
 }
 
+export function listAssistantGuidanceRuns(episodeId: number): Promise<AssistantGuidanceRun[]> {
+  return request(`/api/v1/episodes/${episodeId}/assistant-guidance-runs`);
+}
+
+export function createAssistantGuidanceRun(episodeId: number, requestId: string, mode: GuidanceMode): Promise<AssistantGuidanceRun> {
+  return request(`/api/v1/episodes/${episodeId}/assistant-guidance-runs`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request_id: requestId, mode }),
+  });
+}
+
 export function decideClaim(claimId: number, decision: ConfirmationDecision): Promise<UserConfirmation> {
   return request(`/api/v1/claims/${claimId}/confirmations`, {
     method: "POST",
@@ -250,11 +291,20 @@ export function createLifeEvent(petId: number, payload: { event_type: LifeEventT
 export function updateLifeEvent(eventId: number, payload: { event_type: LifeEventType; happened_at: string; description: string | null }): Promise<LifeEvent> {
   return request(`/api/v1/life-events/${eventId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
 }
+export function deleteLifeEvent(eventId: number): Promise<void> { return request(`/api/v1/life-events/${eventId}`, { method: "DELETE" }); }
 
 export type RelationshipEventPayload = { relationship_kind: RelationshipKind; participant_pet_ids: number[]; happened_at: string; observation_type: RelationshipObservationType; observation_text: string; owner_interpretation: string | null; source_episode_id: number | null };
 export function listRelationshipEvents(petId: number): Promise<RelationshipEvent[]> { return request(`/api/v1/pets/${petId}/relationship-events`); }
 export function createRelationshipEvent(payload: RelationshipEventPayload): Promise<RelationshipEvent> { return request("/api/v1/relationship-events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); }
 export function updateRelationshipEvent(eventId: number, payload: RelationshipEventPayload): Promise<RelationshipEvent> { return request(`/api/v1/relationship-events/${eventId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); }
+export function deleteRelationshipEvent(eventId: number): Promise<void> { return request(`/api/v1/relationship-events/${eventId}`, { method: "DELETE" }); }
+export type InteractionPatternCreatePayload = { relationship_kind: RelationshipKind; participant_pet_ids: number[]; initial_self_report: string | null; title: string; observable_pattern: string; support_event_ids: number[]; contradiction_event_ids: number[]; counterevidence_summary: string; confidence_limit: string };
+export type InteractionPatternUpdatePayload = Pick<InteractionPatternCreatePayload, "title" | "observable_pattern" | "counterevidence_summary" | "confidence_limit"> & { change_summary: string | null };
+export function listInteractionPatterns(petId: number): Promise<InteractionPatternCandidate[]> { return request(`/api/v1/pets/${petId}/interaction-patterns`); }
+export function createInteractionPattern(payload: InteractionPatternCreatePayload): Promise<InteractionPatternCandidate> { return request("/api/v1/interaction-patterns", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); }
+export function updateInteractionPattern(id: number, payload: InteractionPatternUpdatePayload): Promise<InteractionPatternCandidate> { return request(`/api/v1/interaction-patterns/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); }
+export function decideInteractionPattern(id: number, action: InteractionPatternDecisionAction, note: string | null = null): Promise<InteractionPatternCandidate> { return request(`/api/v1/interaction-patterns/${id}/decisions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, note }) }); }
+export function deleteInteractionPattern(id: number): Promise<void> { return request(`/api/v1/interaction-patterns/${id}`, { method: "DELETE" }); }
 
 export function listMemoryCandidates(petId: number): Promise<MemoryCandidate[]> {
   return request(`/api/v1/pets/${petId}/memory-candidates`);

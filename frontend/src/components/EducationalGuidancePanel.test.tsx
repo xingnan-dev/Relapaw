@@ -7,7 +7,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("EducationalGuidancePanel", () => {
   it("loads facts, version and citations with retryable states", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ status: "EDUCATIONAL_ONLY", knowledge_version: "local/v1", review_status: "UNREVIEWED_EXAMPLE", review_note: "Not veterinarian approved", fact_summary: ["Observation: rested"], entries: [{ id: "one", species: ["cat"], title: "Observe context", summary: "Record place", topics: [], source: { title: "Local guide", version: "v1", locator: "context", url: null } }], limitations: ["No diagnosis"] }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ status: "EDUCATIONAL_ONLY", knowledge_version: "local/v1", review_status: "APPROVED", review_note: "Not veterinarian approved", fact_summary: ["Observation: rested"], entries: [{ id: "one", version: "v1", species: ["cat"], title: "Observe context", summary: "Record place", topics: [], published_at: "2026-10-25", review_status: "APPROVED", reviewed_at: "2026-10-25", withdrawn_at: null, scope: "recording_method_only", source: { title: "Local guide", version: "v1", locator: "context", url: null } }], limitations: ["No diagnosis"] }), { status: 200, headers: { "Content-Type": "application/json" } }));
     render(<EducationalGuidancePanel episode={episode} />);
     fireEvent.click(screen.getByRole("button", { name: /查看有来源/ }));
     await waitFor(() => expect(screen.getByText(/Observation: rested/)).toBeInTheDocument());

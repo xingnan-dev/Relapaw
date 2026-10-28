@@ -17,6 +17,9 @@ def production_settings(**overrides):
         "RELAPAW_PRIVACY_VERSION": "privacy-v1",
         "RELAPAW_LEGAL_DOCUMENTS_APPROVED": True,
         "RELAPAW_MEDICAL_REVIEW_STATUS": "APPROVED",
+        "RELAPAW_EMAIL_IDENTITY_MODE": "resend",
+        "RESEND_API_KEY": "test-placeholder-not-a-real-secret",
+        "RELAPAW_RESEND_FROM_EMAIL": "login@relapaw.example",
     }
     values.update(overrides)
     return Settings(_env_file=None, **values)
@@ -52,6 +55,7 @@ def approve_medical_manifest(monkeypatch):
 
 def test_qualified_model_requires_exact_repository_record(monkeypatch):
     approve_medical_manifest(monkeypatch)
+    from app.domain.model_qualification import QUALIFICATION_ID
     with pytest.raises(ValidationError, match="MODEL_QUALIFICATION_ID"):
         production_settings(RELAPAW_MODEL_QUALIFICATION="QUALIFIED")
 
@@ -63,29 +67,45 @@ def test_qualified_model_requires_exact_repository_record(monkeypatch):
             RELAPAW_OPENAI_MODEL="reviewed-model",
         )
 
-    from app.domain.model_qualification import MODEL_QUALIFICATIONS
-    monkeypatch.setitem(MODEL_QUALIFICATIONS, "qualification-2026-10-reviewed", {
-        "status": "APPROVED",
-        "provider": "openai",
-        "model": "reviewed-model",
-        "base_url": "https://api.openai.com/v1",
-        "prompt_contract": "text-understanding/v5-grounded-claims",
-        "input_contract": "understanding-input/v1",
-        "output_contract": "understanding-output/v1",
-    })
     configured = production_settings(
         RELAPAW_AI_ENABLED=True,
         RELAPAW_MODEL_QUALIFICATION="QUALIFIED",
-        RELAPAW_MODEL_QUALIFICATION_ID="qualification-2026-10-reviewed",
-        RELAPAW_OPENAI_MODEL="reviewed-model",
+        RELAPAW_MODEL_QUALIFICATION_ID=QUALIFICATION_ID,
+        RELAPAW_MODEL_PROVIDER="qwen",
+        RELAPAW_OPENAI_MODEL="qwen3.7-plus-2026-05-26",
+        RELAPAW_OPENAI_BASE_URL="https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
     )
     assert configured.ai_enabled is True
-    assert configured.model_qualification_id == "qualification-2026-10-reviewed"
+    assert configured.model_qualification_id == QUALIFICATION_ID
 
     with pytest.raises(ValidationError, match="in-repository qualification"):
         production_settings(
             RELAPAW_AI_ENABLED=True,
             RELAPAW_MODEL_QUALIFICATION="QUALIFIED",
-            RELAPAW_MODEL_QUALIFICATION_ID="qualification-2026-10-reviewed",
+            RELAPAW_MODEL_QUALIFICATION_ID=QUALIFICATION_ID,
+            RELAPAW_MODEL_PROVIDER="qwen",
             RELAPAW_OPENAI_MODEL="different-model",
+            RELAPAW_OPENAI_BASE_URL="https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
         )
+
+
+def test_qualified_model_can_bind_region_policy_without_storing_workspace_id(monkeypatch):
+    approve_medical_manifest(monkeypatch)
+    from app.domain.model_qualification import QUALIFICATION_ID
+    common = {
+        "RELAPAW_AI_ENABLED": True, "RELAPAW_MODEL_QUALIFICATION": "QUALIFIED",
+        "RELAPAW_MODEL_QUALIFICATION_ID": QUALIFICATION_ID, "RELAPAW_MODEL_PROVIDER": "qwen",
+        "RELAPAW_OPENAI_MODEL": "qwen3.7-plus-2026-05-26",
+    }
+    configured = production_settings(
+        **common,
+        RELAPAW_OPENAI_BASE_URL="https://private-workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    )
+    assert configured.ai_enabled is True
+    for invalid_url in (
+        "https://private-workspace.cn-shanghai.maas.aliyuncs.com/compatible-mode/v1",
+        "https://private-workspace.cn-beijing.maas.aliyuncs.com/other/v1",
+        "https://user:password@private-workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    ):
+        with pytest.raises(ValidationError, match="in-repository qualification"):
+            production_settings(**common, RELAPAW_OPENAI_BASE_URL=invalid_url)

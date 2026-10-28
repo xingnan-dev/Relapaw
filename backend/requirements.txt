@@ -7,3 +7,4 @@ pydantic==2.14.1
 pydantic-settings==2.16.0
 python-multipart==0.0.32
 openai==3.26.1
+httpx==0.28.1

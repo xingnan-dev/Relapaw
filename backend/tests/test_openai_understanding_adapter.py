@@ -37,14 +37,9 @@ def understanding_input() -> UnderstandingInput:
 
 def valid_output() -> dict:
     return {
-        "contract_version": "understanding-output/v1",
-        "claims": [{
-            "claim_type": "behavior_hypothesis",
-            "statement": "One possible explanation is that the pause related to the immediate context.",
-            "confidence_label": "LOW",
-            "evidence": [{"evidence_key": "evidence:51", "role": "SUPPORTS"}],
-            "uncertainties": [{"kind": "LIMITED_OBSERVATION", "description": "Only one short episode was recorded."}],
-        }],
+        "contract_version": "understanding-output/v2",
+        "observation_candidates": [{"source_quote": "Mochi paused at the doorway.", "evidence_key": "evidence:51"}],
+        "owner_interpretations": [],
     }
 
 
@@ -100,7 +95,7 @@ def test_responses_parse_uses_structured_output_and_no_tools_or_storage():
 
     output = provider.analyze(understanding_input())
 
-    assert output.claims[0].confidence_label.value == "LOW"
+    assert output.observation_candidates[0].source_quote == "Mochi paused at the doorway."
     call = endpoint.calls[0]
     assert call["model"] == "configured-model"
     assert call["text_format"].__name__ == "UnderstandingOutput"
@@ -108,13 +103,10 @@ def test_responses_parse_uses_structured_output_and_no_tools_or_storage():
     assert call["max_output_tokens"] == 900
     assert "tools" not in call
     assert "test-key-never-sent" not in call["input"]
-    assert "not observed fact" in call["instructions"]
-    assert "Do not diagnose" in call["instructions"]
-    assert "observation or behavior itself" in call["instructions"]
-    assert "Match the natural language" in call["instructions"]
-    assert "never as supporting evidence" in call["instructions"]
-    assert "Required language for every human-readable claim and uncertainty: English (en)." in call["input"]
-    assert provider.descriptor.prompt_contract_version == "text-understanding/v5-grounded-claims"
+    assert "exact, contiguous substring" in call["instructions"]
+    assert "Never paraphrase" in call["instructions"]
+    assert "Never convert an owner interpretation into an observation" in call["instructions"]
+    assert provider.descriptor.prompt_contract_version == "text-understanding/v7-verbatim-fact-extraction"
     assert provider.descriptor.model_version == "resolved-model-2026-10-01"
 
 
@@ -252,7 +244,7 @@ def test_qwen_chat_parse_uses_json_schema_contract_and_disables_thinking():
 
     output = provider.analyze(understanding_input())
 
-    assert output.claims[0].confidence_label.value == "LOW"
+    assert output.observation_candidates[0].source_quote == "Mochi paused at the doorway."
     call = endpoint.calls[0]
     assert call["response_format"] is not None
     assert call["response_format"].__name__ == "UnderstandingOutput"
@@ -261,11 +253,11 @@ def test_qwen_chat_parse_uses_json_schema_contract_and_disables_thinking():
     assert "max_tokens" not in call
     assert "max_completion_tokens" not in call
     assert "test-key-never-sent" not in call["messages"][1]["content"]
-    assert "Required language for every human-readable claim and uncertainty: English (en)." in call["messages"][1]["content"]
+    assert "Episode input JSON" in call["messages"][1]["content"]
     assert provider.descriptor.model_version == "qwen3.8-flash-2026-09-01"
 
 
-def test_qwen_chat_explicitly_requires_chinese_for_chinese_owner_input():
+def test_qwen_chat_sends_chinese_owner_input_without_translation_instruction():
     payload = understanding_input().model_copy(update={"raw_owner_input": "小狗在门口停留。"})
     result = SimpleNamespace(
         model="qwen3.8-flash",
@@ -286,7 +278,8 @@ def test_qwen_chat_explicitly_requires_chinese_for_chinese_owner_input():
 
     provider.analyze(payload)
 
-    assert "Required language for every human-readable claim and uncertainty: Chinese (zh)." in endpoint.calls[0]["messages"][1]["content"]
+    assert "小狗在门口停留。" in endpoint.calls[0]["messages"][1]["content"]
+    assert "translate" not in endpoint.calls[0]["messages"][1]["content"].lower()
 
 
 @pytest.mark.parametrize(("finish_reason", "refusal", "parsed", "expected_code"), [

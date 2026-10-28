@@ -15,9 +15,11 @@ from app.api.deps import require_auth_context, require_csrf, require_current_use
 from app.db.session import get_db
 from app.main import app
 from app.api.router import api_router
-from app.api.routes.auth import _require_valid_locked_invitation, identity_adapter
+from app.api.routes import auth as auth_routes
+from app.api.routes.auth import _require_valid_locked_invitation
 from app.api.errors import APIError
 from app.models import AnalysisRun, Claim, Episode, IdentityInvitation, MemoryCandidate, User, UserSession
+from app.services.identity import LocalInviteIdentityAdapter
 
 
 ORIGIN = "http://localhost:5173"
@@ -42,9 +44,11 @@ def auth_runtime(monkeypatch):
             yield db
 
     monkeypatch.setattr(settings, "local_invite_code", SecretStr(INVITE_CODE))
+    local_adapter = LocalInviteIdentityAdapter(settings)
+    monkeypatch.setattr(auth_routes, "identity_adapter", local_adapter)
     with sessions() as db:
         for email in ("alice@example.test", "bob@example.test"):
-            subject = identity_adapter.subject_for(email)
+            subject = local_adapter.subject_for(email)
             assert subject is not None
             db.add(IdentityInvitation(provider="local-invite", subject=subject, status="PENDING"))
         db.commit()
@@ -109,6 +113,7 @@ def test_current_policy_consent_is_required_and_version_bound(auth_runtime):
     )
     assert session.status_code == 200
     assert session.json()["consent_required"] is True
+    assert session.json()["onboarding_complete"] is False
     csrf = client.post("/api/v1/auth/csrf", headers={"Origin": ORIGIN}).json()["csrf_token"]
     blocked = client.get("/api/v1/pets")
     assert blocked.status_code == 403
@@ -129,6 +134,11 @@ def test_current_policy_consent_is_required_and_version_bound(auth_runtime):
         "/api/v1/privacy/consent", headers=write_headers(csrf),
         json={"terms_version": settings.terms_version, "privacy_version": settings.privacy_version, "source": "ONBOARDING", "affirm_adult_owner": True},
     )
+    assert accepted.status_code == 201
+    completed = client.post("/api/v1/auth/onboarding/complete", headers=write_headers(csrf))
+    assert completed.status_code == 200
+    assert completed.json()["onboarding_complete"] is True
+    assert client.post("/api/v1/auth/onboarding/complete", headers=write_headers(csrf)).json()["onboarding_complete"] is True
     assert accepted.status_code == 201
     assert client.get("/api/v1/pets").status_code == 200
 
@@ -278,7 +288,7 @@ def test_accepted_invitation_remains_valid_after_its_invitation_window(auth_runt
     first_csrf = login(first, "alice@example.test")
     assert first.post("/api/v1/auth/logout", headers=write_headers(first_csrf)).status_code == 204
 
-    subject = identity_adapter.subject_for("alice@example.test")
+    subject = auth_routes.identity_adapter.subject_for("alice@example.test")
     assert subject is not None
     with sessions() as db:
         invitation = db.scalar(select(IdentityInvitation).where(
@@ -394,6 +404,27 @@ def test_two_users_cannot_cross_pet_episode_plan_media_or_lists(auth_runtime, tm
             "observation_text": "Alice pet sat beside the owner.",
         },
     ).json()
+    relationship_event_2 = alice.post(
+        "/api/v1/relationship-events", headers=write_headers(alice_csrf),
+        json={"relationship_kind": "OWNER_PET", "participant_pet_ids": [pet["id"]], "happened_at": "2026-10-26T09:00:00Z", "observation_type": "OWNER_INTERACTION", "observation_text": "Alice pet again sat beside the owner."},
+    ).json()
+    relationship_event_3 = alice.post(
+        "/api/v1/relationship-events", headers=write_headers(alice_csrf),
+        json={"relationship_kind": "OWNER_PET", "participant_pet_ids": [pet["id"]], "happened_at": "2026-11-02T09:00:00Z", "observation_type": "OTHER", "observation_text": "Alice pet remained by the doorway."},
+    ).json()
+    pattern_response = alice.post(
+        "/api/v1/interaction-patterns", headers=write_headers(alice_csrf),
+        json={
+            "relationship_kind": "OWNER_PET", "participant_pet_ids": [pet["id"]],
+            "title": "Repeated nearby resting", "observable_pattern": "The pet sat near the owner in repeated records.",
+            "support_event_ids": [relationship_event["id"], relationship_event_2["id"]],
+            "contradiction_event_ids": [relationship_event_3["id"]],
+            "counterevidence_summary": "One record remained at the doorway.",
+            "confidence_limit": "Only three records; no fixed relationship label.",
+        },
+    )
+    assert pattern_response.status_code == 201, pattern_response.text
+    pattern = pattern_response.json()
     media_response = alice.post(
         f"/api/v1/episodes/{episode['id']}/media",
         headers={**write_headers(alice_csrf), "Content-Type": "image/png", "X-Filename": "synthetic.png"},
@@ -401,18 +432,61 @@ def test_two_users_cannot_cross_pet_episode_plan_media_or_lists(auth_runtime, tm
     )
     assert media_response.status_code == 201, media_response.text
     media = media_response.json()
+    life_media_response = alice.post(
+        f"/api/v1/life-events/{life_event['id']}/media",
+        headers={**write_headers(alice_csrf), "Content-Type": "image/png", "X-Filename": "life.png"},
+        content=b"\x89PNG\r\n\x1a\nlife",
+    )
+    assert life_media_response.status_code == 201, life_media_response.text
+    life_media = life_media_response.json()
+    relationship_media_response = alice.post(
+        f"/api/v1/relationship-events/{relationship_event['id']}/media",
+        headers={**write_headers(alice_csrf), "Content-Type": "image/png", "X-Filename": "relationship.png", "X-Pet-ID": str(pet["id"])},
+        content=b"\x89PNG\r\n\x1a\nrelationship",
+    )
+    assert relationship_media_response.status_code == 201, relationship_media_response.text
+    relationship_media = relationship_media_response.json()
+    memory_candidate = alice.post(
+        f"/api/v1/pets/{pet['id']}/memory-candidates/manual", headers=write_headers(alice_csrf),
+        json={"category": "ROUTINE", "statement": "Private candidate"},
+    ).json()
+    reference_response = alice.post(
+        f"/api/v1/memory-candidates/{memory_candidate['id']}/media-references", headers=write_headers(alice_csrf),
+        json={"media_attachment_id": media["id"]},
+    )
+    assert reference_response.status_code == 201, reference_response.text
 
     assert bob.get(f"/api/v1/pets/{pet['id']}").status_code == 404
     assert bob.get(f"/api/v1/episodes/{episode['id']}").status_code == 404
     assert bob.get(f"/api/v1/episodes/{episode['id']}/media").status_code == 404
+    assert bob.get(f"/api/v1/pets/{pet['id']}/media").status_code == 404
     assert bob.get(f"/api/v1/media/{media['id']}/content").status_code == 404
     assert bob.delete(f"/api/v1/media/{media['id']}", headers=write_headers(bob_csrf)).status_code == 404
+    assert bob.get(f"/api/v1/life-events/{life_event['id']}/media").status_code == 404
+    assert bob.get(f"/api/v1/relationship-events/{relationship_event['id']}/media").status_code == 404
+    assert bob.patch(f"/api/v1/media/{life_media['id']}/metadata", headers=write_headers(bob_csrf), json={"owner_caption": "Must not change"}).status_code == 404
+    assert bob.patch(f"/api/v1/media/{relationship_media['id']}/candidate", headers=write_headers(bob_csrf), json={"action": "CONFIRM"}).status_code == 404
+    assert bob.delete(f"/api/v1/life-events/{life_event['id']}", headers=write_headers(bob_csrf)).status_code == 404
+    assert bob.delete(f"/api/v1/relationship-events/{relationship_event['id']}", headers=write_headers(bob_csrf)).status_code == 404
+    assert bob.post(f"/api/v1/memory-candidates/{memory_candidate['id']}/media-references", headers=write_headers(bob_csrf), json={"media_attachment_id": media["id"]}).status_code == 404
+    assert bob.delete(f"/api/v1/memory-candidates/{memory_candidate['id']}/media-references/{media['id']}", headers=write_headers(bob_csrf)).status_code == 404
     assert bob.get(f"/api/v1/observation-plans/{plan['id']}").status_code == 404
     assert bob.patch(
         f"/api/v1/life-events/{life_event['id']}", headers=write_headers(bob_csrf),
         json={"description": "Must not be changed"},
     ).status_code == 404
     assert bob.get(f"/api/v1/pets/{pet['id']}/relationship-events").status_code == 404
+    assert bob.get(f"/api/v1/pets/{pet['id']}/interaction-patterns").status_code == 404
+    assert bob.put(
+        f"/api/v1/interaction-patterns/{pattern['id']}", headers=write_headers(bob_csrf),
+        json={"title": "Must not change", "observable_pattern": "Must not change", "counterevidence_summary": "Must not change", "confidence_limit": "Must not change"},
+    ).status_code == 404
+    assert bob.post(
+        f"/api/v1/interaction-patterns/{pattern['id']}/decisions", headers=write_headers(bob_csrf), json={"action": "CONFIRM"},
+    ).status_code == 404
+    assert bob.delete(
+        f"/api/v1/interaction-patterns/{pattern['id']}", headers=write_headers(bob_csrf),
+    ).status_code == 404
     assert bob.put(
         f"/api/v1/relationship-events/{relationship_event['id']}", headers=write_headers(bob_csrf),
         json={
@@ -495,6 +569,8 @@ def test_nested_resource_idor_matrix_returns_404_without_mutation(auth_runtime):
         run_id, claim_id, candidate_id = run.id, claim.id, candidate.id
 
     probes = [
+        bob.get(f"/api/v1/episodes/{episode['id']}/assistant-guidance-runs"),
+        bob.post(f"/api/v1/episodes/{episode['id']}/assistant-guidance-runs", headers=write_headers(bob_csrf), json={"request_id": "attack", "mode": "RECORD_REVIEW"}),
         bob.get(f"/api/v1/analysis-runs/{run_id}"),
         bob.post(f"/api/v1/claims/{claim_id}/confirmations", headers=write_headers(bob_csrf), json={"decision": "REJECTED"}),
         bob.post(f"/api/v1/claims/{claim_id}/memory-candidate", headers=write_headers(bob_csrf)),

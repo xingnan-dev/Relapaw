@@ -103,3 +103,103 @@ class RelationshipEventRead(ORMModel):
     @classmethod
     def database_datetime_is_utc(cls, value: datetime) -> datetime:
         return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+class InteractionPatternCreate(StrictModel):
+    relationship_kind: RelationshipKind
+    participant_pet_ids: list[int] = Field(min_length=1, max_length=2)
+    initial_self_report: str | None = Field(default=None, max_length=4000)
+    title: str = Field(min_length=1, max_length=200)
+    observable_pattern: str = Field(min_length=1, max_length=4000)
+    support_event_ids: list[int] = Field(min_length=2)
+    contradiction_event_ids: list[int] = Field(default_factory=list)
+    counterevidence_summary: str = Field(min_length=1, max_length=4000)
+    confidence_limit: str = Field(min_length=1, max_length=2000)
+
+    @model_validator(mode="after")
+    def evidence_and_participants_are_unique(self):
+        if len(set(self.participant_pet_ids)) != len(self.participant_pet_ids):
+            raise ValueError("participant_pet_ids must be unique")
+        if len(set(self.support_event_ids)) != len(self.support_event_ids):
+            raise ValueError("support_event_ids must be unique")
+        if len(set(self.contradiction_event_ids)) != len(self.contradiction_event_ids):
+            raise ValueError("contradiction_event_ids must be unique")
+        if set(self.support_event_ids) & set(self.contradiction_event_ids):
+            raise ValueError("an event cannot both support and contradict a candidate")
+        if len(self.support_event_ids) + len(self.contradiction_event_ids) < 3:
+            raise ValueError("at least three relationship events are required")
+        expected = 1 if self.relationship_kind == "OWNER_PET" else 2
+        if len(self.participant_pet_ids) != expected:
+            raise ValueError(f"{self.relationship_kind} requires exactly {expected} pet participant(s)")
+        return self
+
+
+class InteractionPatternUpdate(StrictModel):
+    title: str = Field(min_length=1, max_length=200)
+    observable_pattern: str = Field(min_length=1, max_length=4000)
+    counterevidence_summary: str = Field(min_length=1, max_length=4000)
+    confidence_limit: str = Field(min_length=1, max_length=2000)
+    change_summary: str | None = Field(default=None, max_length=500)
+
+
+class InteractionPatternDecision(StrictModel):
+    action: Literal["CONFIRM", "REJECT", "WITHDRAW", "INCLUDE_IN_MEMORY", "WITHDRAW_FROM_MEMORY"]
+    note: str | None = Field(default=None, max_length=500)
+
+
+class InteractionPatternEvidenceRead(ORMModel):
+    id: int
+    relationship_event_id: int | None
+    role: Literal["SUPPORTS", "CONTRADICTS"]
+    observation_type: str
+    observation_snapshot: str
+    happened_at: datetime
+
+
+class InteractionPatternRevisionRead(ORMModel):
+    id: int
+    revision_number: int
+    title: str
+    observable_pattern: str
+    counterevidence_summary: str
+    confidence_limit: str
+    change_summary: str | None
+    created_at: datetime
+
+
+class InteractionPatternDecisionRead(ORMModel):
+    id: int
+    action: Literal["CONFIRM", "REJECT", "WITHDRAW", "INCLUDE_IN_MEMORY", "WITHDRAW_FROM_MEMORY"]
+    previous_status: str
+    resulting_status: str
+    previous_memory_status: str
+    resulting_memory_status: str
+    note: str | None
+    created_at: datetime
+
+
+class InteractionPatternRead(ORMModel):
+    id: int
+    relationship_kind: RelationshipKind
+    participant_pet_ids: list[int]
+    initial_self_report: str | None
+    title: str
+    observable_pattern: str
+    counterevidence_summary: str
+    evidence_count: int
+    coverage_start: datetime
+    coverage_end: datetime
+    generator_version: str
+    confidence_limit: str
+    status: Literal["ELIGIBLE", "CONFIRMED", "REJECTED", "WITHDRAWN"]
+    memory_status: Literal["NOT_INCLUDED", "INCLUDED", "WITHDRAWN"]
+    created_at: datetime
+    updated_at: datetime
+    evidences: list[InteractionPatternEvidenceRead]
+    revisions: list[InteractionPatternRevisionRead]
+    decisions: list[InteractionPatternDecisionRead]
+
+    @field_validator("coverage_start", "coverage_end", "created_at", "updated_at")
+    @classmethod
+    def pattern_datetimes_are_utc(cls, value: datetime) -> datetime:
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)

@@ -1,6 +1,8 @@
 import pytest
+from sqlalchemy import text
 
 import app.services.memory as memory_service
+from app.core.config import settings
 from app.api.routes.capabilities import get_ai_enabled
 from app.main import app
 from app.schemas.analysis import AdapterDescriptor
@@ -18,21 +20,13 @@ class MemoryFakeAdapter:
 
     def analyze(self, payload):
         return {
-            "contract_version": "understanding-output/v1",
-            "claims": [{
-                "claim_type": "possible_explanation",
-                "statement": "The pause may relate to the immediate doorway context.",
-                "confidence_label": "LOW",
-                "evidence": [{"evidence_key": payload.evidence[0].key, "role": "SUPPORTS"}],
-                "uncertainties": [{
-                    "kind": "LIMITED_OBSERVATION",
-                    "description": "This is based on one recorded episode.",
-                }],
-            }],
+            "contract_version": "understanding-output/v2",
+            "observation_candidates": [{"source_quote": payload.raw_owner_input, "evidence_key": payload.evidence[0].key}],
+            "owner_interpretations": [],
         }
 
 
-def create_confirmed_claim(client, pet_id: int):
+def create_confirmed_claim(client, pet_id: int, *, legacy: bool = True):
     episode = client.post("/api/v1/episodes/complete", json={
         "pet_id": pet_id,
         "happened_at": "2026-10-09T09:30:00+08:00",
@@ -40,7 +34,7 @@ def create_confirmed_claim(client, pet_id: int):
         "raw_owner_input": "Mochi paused at the doorway.",
         "observations": [{
             "behavior_type": "pause",
-            "description": "Paused for 25 seconds",
+            "description": "Mochi paused at the doorway.",
             "source_type": "owner_direct",
             "measured_value": 25,
             "unit": "seconds",
@@ -58,11 +52,23 @@ def create_confirmed_claim(client, pet_id: int):
         f"/api/v1/episodes/{episode['id']}/analysis-runs", json={"request_id": "memory-run"}
     ).json()
     claim_id = run["claims"][0]["id"]
+    if legacy:
+        with client.app.state.test_engine.begin() as connection:
+            connection.execute(text(
+                "UPDATE claims SET candidate_kind='LEGACY_INTERPRETATION', claim_type='possible_explanation' WHERE id=:id"
+            ), {"id": claim_id})
     confirmation = client.post(
         f"/api/v1/claims/{claim_id}/confirmations", json={"decision": "CONFIRMED"}
     )
     assert confirmation.status_code == 201
     return episode, run, claim_id
+
+
+def test_verbatim_extraction_cannot_become_long_term_memory(client, pet):
+    _episode, _run, claim_id = create_confirmed_claim(client, pet["id"], legacy=False)
+    response = client.post(f"/api/v1/claims/{claim_id}/memory-candidate")
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "EXTRACTION_NOT_MEMORY_ELIGIBLE"
 
 
 def test_only_confirmed_current_claim_can_become_candidate(client, pet):
@@ -71,7 +77,7 @@ def test_only_confirmed_current_claim_can_become_candidate(client, pet):
         "pet_id": pet["id"],
         "happened_at": "2026-10-10T09:30:00Z",
         "episode_type": "note",
-        "raw_owner_input": "Another note",
+        "raw_owner_input": "Paused briefly",
         "observations": [{
             "behavior_type": "pause",
             "description": "Paused briefly",
@@ -85,7 +91,7 @@ def test_only_confirmed_current_claim_can_become_candidate(client, pet):
     ).json()
     rejected = client.post(f"/api/v1/claims/{proposed_run['claims'][0]['id']}/memory-candidate")
     assert rejected.status_code == 409
-    assert rejected.json()["error"]["code"] == "CLAIM_NOT_CONFIRMED"
+    assert rejected.json()["error"]["code"] == "EXTRACTION_NOT_MEMORY_ELIGIBLE"
 
     created = client.post(f"/api/v1/claims/{claim_id}/memory-candidate")
     repeated = client.post(f"/api/v1/claims/{claim_id}/memory-candidate")
@@ -146,6 +152,27 @@ def test_manual_memory_rejects_unknown_category(client, pet):
         json={"category": "OTHER", "statement": "   "},
     )
     assert blank.status_code == 422
+
+
+def test_memory_candidate_references_existing_concrete_media_without_owning_file(client, pet, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "media_dir", tmp_path)
+    episode = client.post("/api/v1/episodes/complete", json={
+        "pet_id": pet["id"], "happened_at": "2026-10-09T09:30:00Z", "episode_type": "note",
+        "raw_owner_input": "A photo-backed note", "observations": [], "owner_interpretations": [],
+        "safety_check": {"result": "NORMAL", "danger_signals": [], "acknowledged_at": "2026-10-09T09:31:00Z"},
+    }).json()
+    media = client.post(f"/api/v1/episodes/{episode['id']}/media", content=b"\x89PNG\r\n\x1a\nmedia", headers={"Content-Type": "image/png", "X-Filename": "evidence.png"}).json()
+    candidate = client.post(f"/api/v1/pets/{pet['id']}/memory-candidates/manual", json={"category": "ROUTINE", "statement": "A pattern to review"}).json()
+    attached = client.post(f"/api/v1/memory-candidates/{candidate['id']}/media-references", json={"media_attachment_id": media["id"]})
+    assert attached.status_code == 201, attached.text
+    assert attached.json()["media_references"][0]["attachment"]["episode_id"] == episode["id"]
+    assert attached.json()["media_references"][0]["attachment"]["original_filename"] == "evidence.png"
+    duplicate = client.post(f"/api/v1/memory-candidates/{candidate['id']}/media-references", json={"media_attachment_id": media["id"]})
+    assert duplicate.status_code == 409
+    removed = client.delete(f"/api/v1/memory-candidates/{candidate['id']}/media-references/{media['id']}")
+    assert removed.status_code == 200
+    assert removed.json()["media_references"] == []
+    assert client.get(f"/api/v1/media/{media['id']}/content").status_code == 200
 
 
 def test_include_withdraw_and_reinclude_are_append_only(client, pet):

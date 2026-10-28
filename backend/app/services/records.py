@@ -7,6 +7,7 @@ from app.domain.enums import EvidenceSourceType, SafetyStatus, VeterinaryEscalat
 from app.models import (
     Episode,
     EpisodePlanLink,
+    EpisodeRevision,
     EvidenceReference,
     Observation,
     ObservationPlan,
@@ -16,6 +17,56 @@ from app.models import (
 )
 from app.schemas.episode import CompleteEpisodeCreate, EpisodeUpdate
 from app.services.timeline import get_episode_detail
+
+
+def episode_snapshot(episode: Episode) -> dict:
+    safety = episode.safety_check
+    return {
+        "happened_at": episode.happened_at.isoformat(),
+        "episode_type": episode.episode_type,
+        "raw_owner_input": episode.raw_owner_input,
+        "context": episode.context,
+        "duration_seconds": episode.duration_seconds,
+        "frequency_count": episode.frequency_count,
+        "intensity": episode.intensity,
+        "location": episode.location,
+        "trigger_context": episode.trigger_context,
+        "observations": [
+            {
+                "behavior_type": item.behavior_type,
+                "standardized_category": item.standardized_category,
+                "description": item.description,
+                "source_type": item.source_type,
+                "confidence": item.confidence,
+                "measured_value": item.measured_value,
+                "unit": item.unit,
+                "standardized_unit": item.standardized_unit,
+            }
+            for item in episode.observations
+        ],
+        "owner_interpretations": [item.interpretation for item in episode.owner_interpretations],
+        "safety_check": None if safety is None else {
+            "result": safety.result,
+            "danger_signals": safety.danger_signals,
+            "other_concern": safety.other_concern,
+        },
+    }
+
+
+def append_episode_revision(
+    db: Session, episode: Episode, source: str, change_summary: str | None = None
+) -> EpisodeRevision:
+    revision = EpisodeRevision(
+        episode_id=episode.id,
+        revision_number=max((item.revision_number for item in episode.revisions), default=0) + 1,
+        source=source,
+        change_summary=change_summary,
+        snapshot=episode_snapshot(episode),
+    )
+    db.add(revision)
+    db.flush()
+    episode.revisions.append(revision)
+    return revision
 
 
 def create_complete_episode(db: Session, payload: CompleteEpisodeCreate) -> Episode:
@@ -111,11 +162,14 @@ def create_complete_episode(db: Session, payload: CompleteEpisodeCreate) -> Epis
     episode.safety_check = safety
     episode.evidence_references = evidence
     episode.plan_links = [plan_link] if plan_link is not None else []
+    append_episode_revision(db, episode, "CREATED")
     return episode
 
 
 def update_episode_aggregate(db: Session, episode: Episode, payload: EpisodeUpdate) -> Episode:
-    for key, value in payload.model_dump(exclude={"observations", "owner_interpretations"}).items():
+    if not episode.revisions:
+        append_episode_revision(db, episode, "LEGACY_BASELINE")
+    for key, value in payload.model_dump(exclude={"observations", "owner_interpretations", "change_summary"}).items():
         setattr(episode, key, value)
     episode.updated_at = datetime.now(timezone.utc)
 
@@ -153,4 +207,5 @@ def update_episode_aggregate(db: Session, episode: Episode, payload: EpisodeUpda
     episode.observations = observations
     episode.owner_interpretations = interpretations
     episode.evidence_references = evidence
+    append_episode_revision(db, episode, "OWNER_EDIT", payload.change_summary)
     return get_episode_detail(db, episode.id) or episode

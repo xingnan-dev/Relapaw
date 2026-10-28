@@ -9,6 +9,7 @@ function json(data: unknown, ok = true, status = ok ? 200 : 500) {
 
 function auxiliary(url: string) {
   if (url.endsWith("/life-events")) return json([]);
+  if (url.endsWith("/media")) return json([]);
   if (url.includes("/timeline")) return json({ items: [], page: 1, page_size: 100, total: 0 });
   return null;
 }
@@ -16,7 +17,7 @@ function auxiliary(url: string) {
 const candidate: MemoryCandidate = {
   id: 4, pet_id: 7, claim_id: 71, source_type: "CLAIM", claim_snapshot: { claim_type: "POSSIBLE_EXPLANATION", statement: "一种经用户确认的可能解释。", confidence_label: "LOW" },
   evidence_snapshot: [], uncertainty_snapshot: [], model_snapshot: {}, source_episode_updated_at: "2026-10-11T08:00:00Z", created_at: "2026-10-11T08:00:00Z",
-  is_stale: false, state: "ELIGIBLE", decisions: [],
+  is_stale: false, state: "ELIGIBLE", decisions: [], media_references: [],
 };
 
 const snapshot: BaselineSnapshot = {
@@ -62,12 +63,31 @@ describe("memory and baseline closure", () => {
       return auxiliary(url) ?? json({}, false, 404);
     }));
     render(<MemoryBaselinePanel petId={7} />);
-    expect(await screen.findByText("人工档案 Baseline")).toBeInTheDocument();
+    expect(await screen.findByText("平时的样子")).toBeInTheDocument();
     expect(await screen.findByText(/一种经用户确认/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "7 天" })).toHaveAttribute("aria-pressed", "true");
     expect((await screen.findAllByText(/样本 3/)).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByText("查看来源（1）"));
     expect(screen.getByText(/EPISODE · duration_seconds/)).toBeInTheDocument();
+  });
+
+  it("shows memory media as a reference to a concrete record", async () => {
+    const attachment = { id: 33, pet_id: 7, episode_id: 21, life_event_id: null, relationship_event_id: null, original_filename: "window.png", media_type: "image/png", byte_size: 12, sha256: "hash", status: "AVAILABLE" as const, observable_facts: "窗边坐姿", captured_at: null, owner_caption: "窗边坐姿", duration_seconds: null, ai_candidate_observation: null, ai_candidate_status: "NONE" as const, created_at: "2026-10-11T08:00:00Z", updated_at: "2026-10-11T08:00:00Z", revisions: [] };
+    const withMedia = { ...candidate, media_references: [{ id: 1, media_attachment_id: 33, created_at: "2026-10-11T08:00:00Z", attachment }] };
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/baseline")) return json({ error: {} }, false, 404);
+      if (url.endsWith("/memory-candidates")) return json([withMedia]);
+      if (url.endsWith("/pets/7/media")) return json([attachment]);
+      if (url.includes("baseline-snapshots/latest")) return json({ error: {} }, false, 404);
+      return auxiliary(url) ?? json({}, false, 404);
+    }));
+    render(<MemoryBaselinePanel petId={7} />);
+    const card = (await screen.findByText("候选 #4")).closest<HTMLElement>(".memory-card")!;
+    fireEvent.click(within(card).getByText(/引用具体记录中的媒体/));
+    expect(within(card).getByText("window.png")).toBeInTheDocument();
+    expect(within(card).getByAltText("窗边坐姿")).toBeInTheDocument();
+    expect(within(card).getByText(/媒体仍属于原始记录/)).toBeInTheDocument();
   });
 
   it("preserves a candidate and reuses its request id after a failed include", async () => {
@@ -168,7 +188,7 @@ describe("memory and baseline closure", () => {
     }));
     render(<MemoryBaselinePanel petId={7} />);
     expect(await screen.findByText("Moved to a quieter room")).toBeInTheDocument();
-    expect(screen.getByText(/Episode #21/)).toBeInTheDocument();
+    expect(screen.getByText(/记录 #21/)).toBeInTheDocument();
     expect(screen.getByText(/时间接近不代表/)).toBeInTheDocument();
     expect(screen.getByText(/下次可记录持续时长/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "编辑事件" }));

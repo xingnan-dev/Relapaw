@@ -6,8 +6,11 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import require_csrf, require_current_user, require_episode, require_escalation, require_life_event, require_pet, require_plan
 from app.api.errors import APIError
+from app.core.config import settings
 from app.db.session import get_db
-from app.models import LifeEvent, ObservationPlan, ObservationPlanItem, PetBaseline, User, VeterinaryEscalation
+from app.models import LifeEvent, MediaAttachment, ObservationPlan, ObservationPlanItem, PetBaseline, User, VeterinaryEscalation
+from app.services.media_records import media_paths_for_record
+from app.services.media_storage import cleanup_path
 from app.schemas.resources import (
     LifeEventCreate, LifeEventUpdate,
     LifeEventRead,
@@ -80,6 +83,17 @@ def update_life_event(event_id: int, payload: LifeEventUpdate, db: Session = Dep
     db.commit()
     db.refresh(event)
     return event
+
+
+@router.delete("/life-events/{event_id}", status_code=204)
+def delete_life_event(event_id: int, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
+    event = require_life_event(db, event_id, user, for_update=True)
+    paths = media_paths_for_record(db, settings.media_dir, MediaAttachment.life_event_id, event.id)
+    try:
+        db.delete(event); db.commit()
+    except Exception:
+        db.rollback(); raise
+    for path in paths: cleanup_path(path, settings.media_dir)
 
 
 @router.get("/pets/{pet_id}/observation-plans", response_model=list[ObservationPlanRead])

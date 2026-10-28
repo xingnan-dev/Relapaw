@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 from app.domain.enums import SafetyStatus
-from app.evaluation.text_understanding import evaluate_payload
 from app.schemas.analysis import UnderstandingInput
 
 if TYPE_CHECKING:
@@ -79,6 +78,7 @@ def run_live_dataset(
     if not authorized:
         raise PermissionError("Live evaluation requires explicit authorization")
 
+    from app.services.understanding import AnalysisExecutionError, _validated_extraction_items
     from app.services.understanding_adapter import AdapterError
 
     selected_adapter = adapter or _build_capped_adapter(budget)
@@ -100,11 +100,11 @@ def run_live_dataset(
             output = selected_adapter.analyze(payload)
             elapsed_ms = round((clock() - started) * 1000, 3)
             output_data = output.model_dump(mode="json")
-            errors = evaluate_payload(
-                case_id=case["id"],
-                input_data=case["input"],
-                candidate_output=output_data,
-            )
+            try:
+                _validated_extraction_items(payload, output)
+                errors = []
+            except AnalysisExecutionError as exc:
+                errors = [exc.code]
             results.append(
                 {
                     "case_id": case["id"],

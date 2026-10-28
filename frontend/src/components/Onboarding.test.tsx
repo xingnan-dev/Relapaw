@@ -31,11 +31,18 @@ describe("onboarding paper flow", () => {
     act(() => vi.advanceTimersByTime(850));
     fireEvent.click(screen.getByRole("button", { name: "翻到下一页" }));
     act(() => vi.advanceTimersByTime(850));
-    fireEvent.click(screen.getByRole("button", { name: "翻到它的档案" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始建立档案" }));
 
     expect(screen.getByText("档案页底层")).toBeInTheDocument();
     expect(onComplete).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(850));
+    expect(onComplete).toHaveBeenCalledOnce();
+  });
+
+  it("supports a non-mutating review mode with a clear close action", () => {
+    const onComplete = vi.fn();
+    render(<Onboarding reviewMode onComplete={onComplete} />);
+    fireEvent.click(screen.getByRole("button", { name: "关闭介绍" }));
     expect(onComplete).toHaveBeenCalledOnce();
   });
 });

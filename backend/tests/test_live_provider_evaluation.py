@@ -7,7 +7,7 @@ from app.schemas.analysis import AdapterDescriptor, UnderstandingOutput
 from app.services.understanding_adapter import AdapterError
 
 
-DATASET = Path(__file__).parents[1] / "evals" / "live_provider_v1.json"
+DATASET = Path(__file__).parents[1] / "evals" / "live_provider_v2.json"
 
 
 class FakeLiveAdapter:
@@ -16,7 +16,7 @@ class FakeLiveAdapter:
         model_provider="test",
         model_name="fixture",
         model_version="v1",
-        prompt_contract_version="text-understanding/v5-grounded-claims",
+        prompt_contract_version="text-understanding/v7-verbatim-fact-extraction",
     )
 
     def __init__(self, error_code: str | None = None):
@@ -27,32 +27,11 @@ class FakeLiveAdapter:
         self.calls += 1
         if self.error_code:
             raise AdapterError(self.error_code, "recorded test failure")
-        evidence_key = payload.evidence[0].key
-        is_chinese = payload.raw_owner_input.startswith("小狗")
+        evidence_key = next(item.key for item in payload.evidence if item.source_type == "RAW_OWNER_INPUT")
         return UnderstandingOutput.model_validate(
             {
-                "claims": [
-                    {
-                        "claim_type": "BEHAVIORAL_CONTEXT",
-                        "statement": (
-                            "这次停留可能与对门外环境的短暂关注有关。"
-                            if is_chinese
-                            else "The glances may reflect brief attention toward the hallway."
-                        ),
-                        "confidence_label": "LOW",
-                        "evidence": [{"evidence_key": evidence_key, "role": "SUPPORTS"}],
-                        "uncertainties": [
-                            {
-                                "kind": "MISSING_CONTEXT",
-                                "description": (
-                                    "没有记录当时门外的环境。"
-                                    if is_chinese
-                                    else "The hallway context was not recorded."
-                                ),
-                            }
-                        ],
-                    }
-                ]
+                "observation_candidates": [{"source_quote": payload.raw_owner_input, "evidence_key": evidence_key}],
+                "owner_interpretations": [],
             }
         )
 

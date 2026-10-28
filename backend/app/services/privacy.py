@@ -9,10 +9,11 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.models import (
-    AnalysisRun, AuditEvent, BaselineEvidence, BaselineSnapshot, Claim, ClaimEvidenceReference,
-    Episode, EpisodeFollowUp, EpisodePlanLink, EvidenceReference, LifeEvent,
-    MediaAttachment, MemoryCandidate, MemoryDecision, MemoryRevision, Observation, ObservationPlan, ObservationPlanItem,
-    OwnerInterpretation, OwnerProfile, Pet, PetBaseline, SafetyCheck, TermsAcceptance,
+    AnalysisRun, AssistantGuidanceRun, AuditEvent, BaselineEvidence, BaselineSnapshot, Claim, ClaimEvidenceReference,
+    Episode, EpisodeFollowUp, EpisodePlanLink, EpisodeRevision, EvidenceReference, LifeEvent,
+    InteractionPatternCandidate, InteractionPatternDecisionRecord, InteractionPatternEvidence, InteractionPatternRevision,
+    MediaAttachment, MediaAttachmentRevision, MemoryCandidate, MemoryCandidateMediaReference, MemoryDecision, MemoryRevision, Observation, ObservationPlan, ObservationPlanItem,
+    OwnerInterpretation, OwnerProfile, Pet, PetAvatar, PetBaseline, SafetyCheck, TermsAcceptance,
     RelationshipEvent, RelationshipInterpretation, RelationshipParticipant, RelationshipRevision,
     Uncertainty, User, UserConfirmation, UserIdentity, UserSession, VeterinaryEscalation,
 )
@@ -47,6 +48,7 @@ def build_account_export(db: Session, user: User, settings: Settings) -> dict[st
     plans = list(db.scalars(select(ObservationPlan).where(ObservationPlan.pet_id.in_(pet_ids))).all()) if pet_ids else []
     plan_ids = [item.id for item in plans]
     runs = list(db.scalars(select(AnalysisRun).where(AnalysisRun.episode_id.in_(episode_ids))).all()) if episode_ids else []
+    guidance_runs = list(db.scalars(select(AssistantGuidanceRun).where(AssistantGuidanceRun.episode_id.in_(episode_ids))).all()) if episode_ids else []
     run_ids = [item.id for item in runs]
     claims = list(db.scalars(select(Claim).where(Claim.analysis_run_id.in_(run_ids))).all()) if run_ids else []
     claim_ids = [item.id for item in claims]
@@ -56,6 +58,8 @@ def build_account_export(db: Session, user: User, settings: Settings) -> dict[st
     snapshot_ids = [item.id for item in snapshots]
     relationship_events = list(db.scalars(select(RelationshipEvent).where(RelationshipEvent.owner_user_id == user.id)).all())
     relationship_ids = [item.id for item in relationship_events]
+    interaction_patterns = list(db.scalars(select(InteractionPatternCandidate).where(InteractionPatternCandidate.owner_user_id == user.id)).all())
+    interaction_pattern_ids = [item.id for item in interaction_patterns]
 
     def selected(model, condition):
         return [_row(item) for item in db.scalars(select(model).where(condition)).all()]
@@ -69,11 +73,13 @@ def build_account_export(db: Session, user: User, settings: Settings) -> dict[st
         "consents": selected(TermsAcceptance, TermsAcceptance.user_id == user.id),
         "owner_profiles": selected(OwnerProfile, OwnerProfile.user_id == user.id),
         "pets": [_row(item) for item in pets],
+        "pet_avatars": selected(PetAvatar, PetAvatar.pet_id.in_(pet_ids)) if pet_ids else [],
         "pet_baselines": selected(PetBaseline, PetBaseline.pet_id.in_(pet_ids)) if pet_ids else [],
         "life_events": selected(LifeEvent, LifeEvent.pet_id.in_(pet_ids)) if pet_ids else [],
         "observation_plans": [_row(item) for item in plans],
         "observation_plan_items": selected(ObservationPlanItem, ObservationPlanItem.plan_id.in_(plan_ids)) if plan_ids else [],
         "episodes": [_row(item) for item in episodes],
+        "episode_revisions": selected(EpisodeRevision, EpisodeRevision.episode_id.in_(episode_ids)) if episode_ids else [],
         "observations": selected(Observation, Observation.episode_id.in_(episode_ids)) if episode_ids else [],
         "owner_interpretations": selected(OwnerInterpretation, OwnerInterpretation.episode_id.in_(episode_ids)) if episode_ids else [],
         "safety_checks": selected(SafetyCheck, SafetyCheck.episode_id.in_(episode_ids)) if episode_ids else [],
@@ -88,6 +94,7 @@ def build_account_export(db: Session, user: User, settings: Settings) -> dict[st
             ),
         ) if all_episode_ids else [],
         "analysis_runs": [_row(item) for item in runs],
+        "assistant_guidance_runs": [_row(item) for item in guidance_runs],
         "claims": [_row(item) for item in claims],
         "claim_evidence": selected(ClaimEvidenceReference, ClaimEvidenceReference.claim_id.in_(claim_ids)) if claim_ids else [],
         "uncertainties": selected(Uncertainty, Uncertainty.claim_id.in_(claim_ids)) if claim_ids else [],
@@ -95,11 +102,17 @@ def build_account_export(db: Session, user: User, settings: Settings) -> dict[st
         "memory_candidates": [_row(item) for item in candidates],
         "memory_decisions": selected(MemoryDecision, MemoryDecision.candidate_id.in_(candidate_ids)) if candidate_ids else [],
         "memory_revisions": selected(MemoryRevision, MemoryRevision.candidate_id.in_(candidate_ids)) if candidate_ids else [],
+        "memory_candidate_media_references": selected(MemoryCandidateMediaReference, MemoryCandidateMediaReference.candidate_id.in_(candidate_ids)) if candidate_ids else [],
         "relationship_events": [_row(item) for item in relationship_events],
         "relationship_participants": selected(RelationshipParticipant, RelationshipParticipant.event_id.in_(relationship_ids)) if relationship_ids else [],
         "relationship_interpretations": selected(RelationshipInterpretation, RelationshipInterpretation.event_id.in_(relationship_ids)) if relationship_ids else [],
         "relationship_revisions": selected(RelationshipRevision, RelationshipRevision.event_id.in_(relationship_ids)) if relationship_ids else [],
-        "media_attachments": selected(MediaAttachment, MediaAttachment.episode_id.in_(episode_ids)) if episode_ids else [],
+        "interaction_pattern_candidates": [_row(item) for item in interaction_patterns],
+        "interaction_pattern_evidences": selected(InteractionPatternEvidence, InteractionPatternEvidence.candidate_id.in_(interaction_pattern_ids)) if interaction_pattern_ids else [],
+        "interaction_pattern_revisions": selected(InteractionPatternRevision, InteractionPatternRevision.candidate_id.in_(interaction_pattern_ids)) if interaction_pattern_ids else [],
+        "interaction_pattern_decisions": selected(InteractionPatternDecisionRecord, InteractionPatternDecisionRecord.candidate_id.in_(interaction_pattern_ids)) if interaction_pattern_ids else [],
+        "media_attachments": selected(MediaAttachment, MediaAttachment.pet_id.in_(pet_ids)) if pet_ids else [],
+        "media_attachment_revisions": selected(MediaAttachmentRevision, MediaAttachmentRevision.attachment_id.in_(select(MediaAttachment.id).where(MediaAttachment.pet_id.in_(pet_ids)))) if pet_ids else [],
         "baseline_snapshots": [_row(item) for item in snapshots],
         "baseline_evidence": selected(BaselineEvidence, BaselineEvidence.snapshot_id.in_(snapshot_ids)) if snapshot_ids else [],
     }
@@ -127,10 +140,12 @@ def redact_episode(db: Session, episode: Episode, user: User, settings: Settings
     media_paths = [settings.media_dir / attachment.storage_key for attachment in attachments]
     db.execute(delete(MediaAttachment).where(MediaAttachment.episode_id == episode.id))
     db.execute(delete(AnalysisRun).where(AnalysisRun.episode_id == episode.id))
+    db.execute(delete(AssistantGuidanceRun).where(AssistantGuidanceRun.episode_id == episode.id))
     db.execute(delete(EpisodePlanLink).where(EpisodePlanLink.episode_id == episode.id))
     db.execute(delete(VeterinaryEscalation).where(VeterinaryEscalation.episode_id == episode.id))
     db.execute(delete(EvidenceReference).where(EvidenceReference.episode_id == episode.id))
     db.execute(delete(SafetyCheck).where(SafetyCheck.episode_id == episode.id))
+    db.execute(delete(EpisodeRevision).where(EpisodeRevision.episode_id == episode.id))
     db.execute(delete(OwnerInterpretation).where(OwnerInterpretation.episode_id == episode.id))
     db.execute(delete(Observation).where(Observation.episode_id == episode.id))
     db.query(EpisodeFollowUp).filter(
@@ -173,10 +188,12 @@ def purge_due_accounts(db: Session, settings: Settings, *, now: datetime | None 
         append_audit_event(db, settings, actor_user_id=user.id, event_type="ACCOUNT_DATA_PURGED", subject_type="USER", subject_id=user.id)
         pet_ids = list(db.scalars(select(Pet.id).where(Pet.owner_user_id == user.id)).all())
         if pet_ids:
+            avatars = list(db.scalars(select(PetAvatar).where(PetAvatar.pet_id.in_(pet_ids))).all())
+            media_paths.extend(settings.media_dir / avatar.storage_key for avatar in avatars)
+            attachments = list(db.scalars(select(MediaAttachment).where(MediaAttachment.pet_id.in_(pet_ids))).all())
+            media_paths.extend(settings.media_dir / attachment.storage_key for attachment in attachments)
             episode_ids = list(db.scalars(select(Episode.id).where(Episode.pet_id.in_(pet_ids))).all())
             if episode_ids:
-                attachments = list(db.scalars(select(MediaAttachment).where(MediaAttachment.episode_id.in_(episode_ids))).all())
-                media_paths.extend(settings.media_dir / attachment.storage_key for attachment in attachments)
                 # These two references deliberately use RESTRICT so normal record
                 # deletion cannot silently destroy their lifecycle. An account purge
                 # is the explicit exception and removes them before the episodes.

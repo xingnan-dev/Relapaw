@@ -1,6 +1,9 @@
 import pytest
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 import app.services.records as records_service
+from app.models import EpisodeRevision
 
 
 def payload(pet_id: int, happened_at="2026-10-08T09:30:00+08:00", episode_type="behavior_change"):
@@ -61,7 +64,7 @@ def test_complete_episode_detail_and_not_found(client, pet):
 
 
 def test_timeline_filters_count_page_and_stable_order(client, pet):
-    plan = client.post(f"/api/v1/pets/{pet['id']}/observation-plans", json={"goal": "Observe"}).json()
+    plan = client.post(f"/api/v1/pets/{pet['id']}/observation-plans", json={"goal": "Observe", "status": "ACTIVE"}).json()
     create(client, pet["id"], happened_at="2026-10-01T08:00:00Z", episode_type="feeding")
     create(client, pet["id"], happened_at="2026-10-08T08:00:00Z", episode_type="behavior_change", plan_id=plan["id"], raw_owner_input="first")
     create(client, pet["id"], happened_at="2026-10-08T08:00:00Z", episode_type="behavior_change", plan_id=plan["id"], raw_owner_input="second")
@@ -102,7 +105,7 @@ def test_timeline_searches_separate_lenses_and_filters_controlled_category(clien
 
 def test_timeline_never_leaks_another_pet(client, pet):
     other = client.post("/api/v1/pets", json={"name": "Other", "species": "dog"}).json()
-    foreign_plan = client.post(f"/api/v1/pets/{other['id']}/observation-plans", json={"goal": "Other plan"}).json()
+    foreign_plan = client.post(f"/api/v1/pets/{other['id']}/observation-plans", json={"goal": "Other plan", "status": "ACTIVE"}).json()
     create(client, other["id"], plan_id=foreign_plan["id"])
     own = client.get(f"/api/v1/pets/{pet['id']}/timeline?plan_id={foreign_plan['id']}")
     assert own.status_code == 200
@@ -112,8 +115,13 @@ def test_timeline_never_leaks_another_pet(client, pet):
 
 def test_update_replaces_lenses_and_evidence_but_preserves_safety(client, pet):
     episode = create(client, pet["id"])
+    assert episode["revisions"][0]["revision_number"] == 1
+    assert episode["revisions"][0]["source"] == "CREATED"
+    original_snapshot = episode["revisions"][0]["snapshot"]
     old_safety_id = episode["safety_check"]["id"]
-    response = client.put(f"/api/v1/episodes/{episode['id']}", json=update_payload(episode))
+    update = update_payload(episode)
+    update["change_summary"] = "补充早餐后的变化"
+    response = client.put(f"/api/v1/episodes/{episode['id']}", json=update)
     assert response.status_code == 200
     body = response.json()
     assert body["pet_id"] == pet["id"]
@@ -121,6 +129,11 @@ def test_update_replaces_lenses_and_evidence_but_preserves_safety(client, pet):
     assert [item["description"] for item in body["observations"]] == ["Walked into the kitchen"]
     assert [item["interpretation"] for item in body["owner_interpretations"]] == ["I think she was more comfortable"]
     assert body["safety_check"]["id"] == old_safety_id
+    assert [item["revision_number"] for item in body["revisions"]] == [1, 2]
+    assert body["revisions"][0]["snapshot"] == original_snapshot
+    assert body["revisions"][1]["source"] == "OWNER_EDIT"
+    assert body["revisions"][1]["change_summary"] == "补充早餐后的变化"
+    assert body["revisions"][1]["snapshot"]["raw_owner_input"] == "She came out after breakfast."
     assert {item["source_id"] for item in body["evidence_references"]} == {body["id"], body["observations"][0]["id"], body["owner_interpretations"][0]["id"]}
     assert all(item["observed_at"] == body["happened_at"] for item in body["evidence_references"])
 
@@ -143,8 +156,12 @@ def test_update_forbids_pet_id_and_rolls_back_after_write_failure(client, pet, m
 
 def test_delete_cascades_aggregate_and_missing_is_404(client, pet):
     episode = create(client, pet["id"])
+    with Session(client.app.state.test_engine) as db:
+        assert db.scalar(select(func.count()).select_from(EpisodeRevision).where(EpisodeRevision.episode_id == episode["id"])) == 1
     response = client.delete(f"/api/v1/episodes/{episode['id']}")
     assert response.status_code == 204
+    with Session(client.app.state.test_engine) as db:
+        assert db.scalar(select(func.count()).select_from(EpisodeRevision).where(EpisodeRevision.episode_id == episode["id"])) == 0
     assert client.get(f"/api/v1/episodes/{episode['id']}").status_code == 404
     assert client.get(f"/api/v1/pets/{pet['id']}/timeline").json()["total"] == 0
     missing = client.delete(f"/api/v1/episodes/{episode['id']}")

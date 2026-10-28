@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Onboarding } from "./components/Onboarding";
+import { isOnboardingComplete } from "./state/onboarding";
 import { PetSetup } from "./components/PetSetup";
 import { Splash } from "./components/Splash";
 import { CurrentPetProvider, useCurrentPet } from "./state/CurrentPetContext";
-import { completeOnboarding, isOnboardingComplete } from "./state/onboarding";
 import { Timeline } from "./pages/Timeline";
 import { Today } from "./pages/Today";
 import { Understand } from "./pages/Understand";
@@ -22,22 +22,27 @@ const tabMeta: Record<Tab, { label: string; description: string; icon: NavIconNa
 };
 
 function AppFlow() {
+  const { session, finishOnboarding } = useAuth();
   const { status } = useCurrentPet();
   const [booted, setBooted] = useState(false);
-  const [onboarded, setOnboarded] = useState(isOnboardingComplete);
   const [showSetup, setShowSetup] = useState(false);
+  const [onboardingCompletedHere, setOnboardingCompletedHere] = useState(false);
+  const [reviewOnboarding, setReviewOnboarding] = useState(false);
+  const [onboardingError, setOnboardingError] = useState("");
 
   useEffect(() => { if (status !== "loading") setBooted(true); }, [status]);
   if (!booted) return <Splash />;
-  if (!onboarded) return <Onboarding
-    onComplete={() => { completeOnboarding(); setOnboarded(true); setShowSetup(true); }}
+  const onboardingComplete = session?.onboarding_complete ?? isOnboardingComplete();
+  if (!onboardingComplete && !onboardingCompletedHere) return <><Onboarding
+    onComplete={() => { setOnboardingError(""); void finishOnboarding().then(() => { setOnboardingCompletedHere(true); setShowSetup(true); }).catch(() => setOnboardingError("引导完成状态暂时无法保存，请重试。")); }}
     finalUnderlay={<PetSetup onDone={() => setShowSetup(false)} onSkip={() => setShowSetup(false)} />}
-  />;
+  />{onboardingError && <p className="onboarding-save-error" role="alert">{onboardingError}</p>}</>;
   if (showSetup) return <PetSetup onDone={() => setShowSetup(false)} onSkip={() => setShowSetup(false)} />;
-  return <MainShell onAddPet={() => setShowSetup(true)} />;
+  if (reviewOnboarding) return <Onboarding reviewMode onComplete={() => setReviewOnboarding(false)} />;
+  return <MainShell onAddPet={() => setShowSetup(true)} onReviewOnboarding={() => setReviewOnboarding(true)} />;
 }
 
-function MainShell({ onAddPet }: { onAddPet: () => void }) {
+function MainShell({ onAddPet, onReviewOnboarding }: { onAddPet: () => void; onReviewOnboarding: () => void }) {
   const { capabilities } = useCapabilities();
   const { signOut } = useAuth();
   const { pet, pets, setCurrentPet } = useCurrentPet();
@@ -49,26 +54,37 @@ function MainShell({ onAddPet }: { onAddPet: () => void }) {
   });
   const [targetEpisodeId, setTargetEpisodeId] = useState<number | null>(null);
   const [targetUsMemory, setTargetUsMemory] = useState(false);
+  const [targetPlanCreate, setTargetPlanCreate] = useState(false);
   const [signOutBusy, setSignOutBusy] = useState(false);
   const [signOutError, setSignOutError] = useState("");
   const [recordSubmitting, setRecordSubmitting] = useState(false);
-  useEffect(() => { setTargetEpisodeId(null); setTargetUsMemory(false); }, [pet?.id]);
+  useEffect(() => { setTargetEpisodeId(null); setTargetUsMemory(false); setTargetPlanCreate(false); }, [pet?.id]);
   useLayoutEffect(() => {
     const page = pageRef.current;
     if (page && typeof page.scrollTo === "function") page.scrollTo({ top: 0, left: 0, behavior: "auto" });
     else if (page) page.scrollTop = 0;
+    const frame = requestAnimationFrame(() => {
+      const current = pageRef.current;
+      if (current && typeof current.scrollTo === "function") current.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      else if (current) current.scrollTop = 0;
+    });
+    return () => cancelAnimationFrame(frame);
   }, [active]);
-  const openEpisode = (episodeId: number) => { setTargetEpisodeId(episodeId); setActive("Timeline"); };
-  const openMemory = () => { setTargetUsMemory(true); setActive("Us"); };
+  const navigate = (page: Tab) => {
+    if (window.location.hash) window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    setActive(page);
+  };
+  const openEpisode = (episodeId: number) => { setTargetEpisodeId(episodeId); navigate("Timeline"); };
+  const openMemory = () => { setTargetUsMemory(true); navigate("Us"); };
   const pages = {
-    Today: <Today onAddPet={onAddPet} onUnderstand={() => setActive("Understand")} onOpenEpisode={openEpisode} />,
-    Understand: <Understand onSaved={openEpisode} onSubmittingChange={setRecordSubmitting} />,
+    Today: <Today onAddPet={onAddPet} onUnderstand={() => navigate("Understand")} onOpenEpisode={openEpisode} startPlanCreation={targetPlanCreate} onPlanCreationOpened={() => setTargetPlanCreate(false)} />,
+    Understand: <Understand onSaved={openEpisode} onCreatePlan={() => { setTargetPlanCreate(true); navigate("Today"); }} onSubmittingChange={setRecordSubmitting} />,
     Timeline: <Timeline initialEpisodeId={targetEpisodeId} onInitialEpisodeOpened={() => setTargetEpisodeId(null)} onOpenMemory={openMemory} />,
     Us: <Us onAddPet={onAddPet} initialSection={targetUsMemory ? "memory" : null} onInitialSectionOpened={() => setTargetUsMemory(false)} />,
   };
   const enterToday = () => {
     try { localStorage.setItem("relapaw:daily-opening", new Date().toLocaleDateString("en-CA")); } catch { /* non-persistent environments still continue */ }
-    setActive("Today");
+    navigate("Today");
     setShowDailyOpening(false);
   };
   return (
@@ -76,25 +92,30 @@ function MainShell({ onAddPet }: { onAddPet: () => void }) {
       <BrandAtmosphere/>
       <header className="app-header">
         <div className="brand-lockup"><BrandMark/><div><h1>Relapaw</h1><p>Beyond the Paw. The Bond.</p></div></div>
-        <p className="brand-promise">先看见发生了什么，再慢慢理解彼此。</p>
-        {pets.length > 0 && <label className="pet-switcher">当前宠物
-          <select aria-label="当前宠物" value={pet?.id ?? ""} disabled={recordSubmitting} onChange={(event) => {
-            const next = pets.find((item) => item.id === Number(event.target.value));
-            if (!next || next.id === pet?.id) return;
-            setCurrentPet(next);
-          }}>{pets.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select>
-        </label>}
-        <button type="button" className="text-button" disabled={signOutBusy} onClick={() => {
-          setSignOutBusy(true); setSignOutError("");
-          void signOut().catch(() => setSignOutError("退出失败，请检查网络后重试。")).finally(() => setSignOutBusy(false));
-        }}>{signOutBusy ? "正在退出…" : "安全退出"}</button>
+        <div className="app-header__context">
+          <p className="brand-promise">先看见发生了什么，再慢慢理解彼此。</p>
+          {pets.length > 0 && <label className="pet-switcher"><span>当前宠物</span>
+            <select aria-label="当前宠物" value={pet?.id ?? ""} disabled={recordSubmitting} onChange={(event) => {
+              const next = pets.find((item) => item.id === Number(event.target.value));
+              if (!next || next.id === pet?.id) return;
+              setCurrentPet(next);
+            }}>{pets.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select>
+          </label>}
+        </div>
+        <div className="app-header__actions">
+          <button type="button" className="text-button signout-button" disabled={signOutBusy} onClick={() => {
+            setSignOutBusy(true); setSignOutError("");
+            void signOut().catch(() => setSignOutError("退出失败，请检查网络后重试。")).finally(() => setSignOutBusy(false));
+          }}>{signOutBusy ? "正在退出…" : "安全退出"}</button>
+          <button type="button" className="text-button onboarding-review-button" onClick={onReviewOnboarding}>重看三页介绍</button>
+        </div>
         {signOutError && <p role="alert">{signOutError}</p>}
       </header>
       {capabilities.synthetic_data && <p className="demo-data-banner" role="status">合成演示数据 · {capabilities.dataset_version ?? "数据集待验证"}</p>}
       <main ref={pageRef} className="page-transition" key={`${active}:${pet?.id ?? "none"}`}>{pages[active]}</main>
       <nav className="bottom-nav" aria-label="Primary navigation">
         <p className="nav-label">RELAPAW</p>
-        {tabs.map((tab) => <button key={tab} type="button" data-nav={tab.toLowerCase()} aria-label={tab} aria-current={active === tab ? "page" : undefined} onClick={() => setActive(tab)}>
+        {tabs.map((tab) => <button key={tab} type="button" data-nav={tab.toLowerCase()} aria-label={tab} aria-current={active === tab ? "page" : undefined} onClick={() => navigate(tab)}>
           <span className="nav-icon"><NavIcon name={tabMeta[tab].icon}/></span><span className="nav-copy"><strong>{tabMeta[tab].label}</strong><small>{tabMeta[tab].description}</small></span>
         </button>)}
       </nav>
@@ -106,7 +127,7 @@ function MainShell({ onAddPet }: { onAddPet: () => void }) {
           <button className="primary" type="button" onClick={enterToday}>和它一起开始 <span aria-hidden="true">→</span></button>
         </div>
         <div className="daily-opening__media">
-          <img src="/brand/relapaw-welcome-corgi-v4.png" alt="怀旧绘本中的柯基依偎在主人身边，窗外是安静的草坡与云" />
+          <img src="/brand/relapaw-welcome-corgi-v4.png" width="1672" height="941" decoding="async" alt="怀旧绘本中的柯基依偎在主人身边，窗外是安静的草坡与云" />
         </div>
       </section>}
     </div>

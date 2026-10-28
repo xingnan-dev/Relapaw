@@ -15,6 +15,7 @@ describe("relationship timeline", () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/pets/1/relationship-events")) return json([current]);
+      if (url.endsWith("/pets/1/interaction-patterns")) return json([]);
       if (url.endsWith("/relationship-events/5") && init?.method === "PUT") {
         const body = JSON.parse(String(init.body));
         current = { ...current, observation_text: body.observation_text, revisions: [...current.revisions, { ...current.revisions[0], id: 2, revision_number: 2, observation_text: body.observation_text, owner_interpretation: body.owner_interpretation }] };
@@ -24,23 +25,23 @@ describe("relationship timeline", () => {
     }));
     render(<RelationshipTimeline pet={mochi} pets={[mochi, nori]} />);
     const card = (await screen.findAllByText(/Both rested/))[0].closest<HTMLElement>(".memory-card")!;
-    expect(within(card).getByText(/主人 Interpretation/)).toBeInTheDocument();
-    expect(within(card).getAllByText(/Episode #9/).length).toBeGreaterThan(0);
+    expect(within(card).getAllByText(/我的理解/).length).toBeGreaterThan(0);
+    expect(within(card).getAllByText(/记录 #9/).length).toBeGreaterThan(0);
     expect(within(card).getByText(/系统提示：无/)).toBeInTheDocument();
     fireEvent.click(within(card).getByRole("button", { name: "编辑关系事件" }));
-    fireEvent.change(screen.getByLabelText("客观 Observation"), { target: { value: "Both remained two metres apart for twelve minutes." } });
+    fireEvent.change(screen.getByLabelText("看到的互动"), { target: { value: "Both remained two metres apart for twelve minutes." } });
     fireEvent.click(screen.getByRole("button", { name: "保存修订" }));
     expect(await screen.findByText(/two metres apart/)).toBeInTheDocument();
     expect(screen.getByText(/修订历史（2）/)).toBeInTheDocument();
   });
 
   it("requires a second participant for pet-to-pet records", async () => {
-    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/pets/1/relationship-events") ? json([]) : json({}, false, 404)));
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/pets/1/relationship-events") || String(input).endsWith("/pets/1/interaction-patterns") ? json([]) : json({}, false, 404)));
     render(<RelationshipTimeline pet={mochi} pets={[mochi]} />);
     await screen.findByText(/尚无关系事件/);
     fireEvent.change(screen.getByLabelText("关系类型"), { target: { value: "PET_PET" } });
-    fireEvent.change(screen.getByLabelText("客观 Observation"), { target: { value: "Mochi rested alone." } });
+    fireEvent.change(screen.getByLabelText("看到的互动"), { target: { value: "Mochi rested alone." } });
     fireEvent.click(screen.getByRole("button", { name: "记录关系事件" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("需要选择另一只宠物");
+    expect(await screen.findByText(/需要选择另一只宠物/)).toBeInTheDocument();
   });
 });

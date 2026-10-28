@@ -10,7 +10,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.domain.enums import SafetyStatus
-from app.schemas.analysis import UnderstandingInput, UnderstandingOutput
+from app.schemas.analysis import LegacyUnderstandingOutput, UnderstandingInput
 
 
 ERROR_SAFETY_OUTPUT_PRESENT = "SAFETY_OUTPUT_PRESENT"
@@ -20,6 +20,7 @@ ERROR_EVIDENCE_INVALID = "EVIDENCE_INVALID"
 ERROR_PROHIBITED_CONTENT = "PROHIBITED_CONTENT"
 ERROR_LANGUAGE_MISMATCH = "LANGUAGE_MISMATCH"
 ERROR_INTERPRETATION_SUPPORT_INVALID = "INTERPRETATION_SUPPORT_INVALID"
+ERROR_UNGROUNDED_INFERENCE = "UNGROUNDED_INFERENCE"
 
 _CJK = re.compile(r"[\u3400-\u9fff]")
 _PROHIBITED = re.compile(
@@ -27,6 +28,29 @@ _PROHIBITED = re.compile(
     r"\bdosage\b|\b\d+(?:\.\d+)?\s*mg\b|诊断为|确诊|治疗方案|用药|剂量|毫克)",
     re.IGNORECASE,
 )
+_NOVEL_INFERENCE_TERMS = (
+    "sound", "noise", "smell", "odor", "stimulus", "trigger", "hallway activity",
+    "decide", "decision", "checking", "monitoring", "secure", "comfortable",
+    "anxiety", "anxious", "tired", "tiredness", "intention", "motivation",
+    "声音", "响声", "噪音", "气味", "刺激", "触发", "决定", "检查", "监视",
+    "监测", "安全感", "安心", "焦虑", "疲倦", "疲劳", "意图", "动机",
+)
+
+
+def semantic_grounding_errors(input_data: UnderstandingInput, output: LegacyUnderstandingOutput) -> list[str]:
+    """Reject common novel causes/internal states before output reaches persistence."""
+    source_text = " ".join(
+        [input_data.raw_owner_input]
+        + [item.description for item in input_data.observations]
+        + [item.interpretation for item in input_data.owner_interpretations]
+        + [item.excerpt or "" for item in input_data.evidence]
+    ).casefold()
+    statements = " ".join(claim.statement for claim in output.claims).casefold()
+    for term in _NOVEL_INFERENCE_TERMS:
+        normalized = term.casefold()
+        if normalized in statements and normalized not in source_text:
+            return [ERROR_UNGROUNDED_INFERENCE]
+    return []
 
 
 @dataclass(frozen=True)
@@ -59,7 +83,7 @@ def evaluate_case(case: dict[str, Any]) -> CaseResult:
         return _result(case_id, expected_pass, expected_errors, [ERROR_OUTPUT_MISSING])
 
     try:
-        output = UnderstandingOutput.model_validate(candidate)
+        output = LegacyUnderstandingOutput.model_validate(candidate)
     except ValidationError:
         return _result(case_id, expected_pass, expected_errors, [ERROR_CONTRACT_INVALID])
 
@@ -94,6 +118,7 @@ def evaluate_case(case: dict[str, Any]) -> CaseResult:
 
     if _CJK.search(input_data.raw_owner_input) and generated_text and not _CJK.search(generated_text):
         errors.add(ERROR_LANGUAGE_MISMATCH)
+    errors.update(semantic_grounding_errors(input_data, output))
 
     return _result(case_id, expected_pass, expected_errors, sorted(errors))
 

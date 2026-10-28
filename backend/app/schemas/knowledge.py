@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Literal
 from pydantic import BaseModel
 
@@ -11,17 +12,22 @@ class KnowledgeSource(BaseModel):
 
 class KnowledgeEntry(BaseModel):
     id: str
+    version: str
     species: list[str]
     title: str
     summary: str
     topics: list[str]
     source: KnowledgeSource
-    review_status: Literal["UNREVIEWED_EXAMPLE"] = "UNREVIEWED_EXAMPLE"
+    published_at: date
+    review_status: Literal["DRAFT", "APPROVED", "WITHDRAWN"]
+    reviewed_at: date | None = None
+    withdrawn_at: date | None = None
+    scope: Literal["recording_method_only"]
 
 
 class KnowledgeSetRead(BaseModel):
     version: str
-    review_status: Literal["UNREVIEWED_EXAMPLE"]
+    review_status: Literal["DRAFT", "APPROVED", "WITHDRAWN"]
     review_note: str
     entries: list[KnowledgeEntry]
 
@@ -29,7 +35,7 @@ class KnowledgeSetRead(BaseModel):
 class EducationalGuidanceRead(BaseModel):
     status: Literal["EDUCATIONAL_ONLY"]
     knowledge_version: str
-    review_status: Literal["UNREVIEWED_EXAMPLE"]
+    review_status: Literal["DRAFT", "APPROVED", "WITHDRAWN"]
     review_note: str
     fact_summary: list[str]
     entries: list[KnowledgeEntry]

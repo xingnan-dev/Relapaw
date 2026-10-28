@@ -23,6 +23,9 @@ def production_values(**overrides):
         "RELAPAW_PRIVACY_VERSION": "privacy-v1",
         "RELAPAW_LEGAL_DOCUMENTS_APPROVED": True,
         "RELAPAW_MEDICAL_REVIEW_STATUS": "APPROVED",
+        "RELAPAW_EMAIL_IDENTITY_MODE": "resend",
+        "RESEND_API_KEY": "test-placeholder-not-a-real-secret",
+        "RELAPAW_RESEND_FROM_EMAIL": "login@relapaw.example",
     }
     values.update(overrides)
     return values

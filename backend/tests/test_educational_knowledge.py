@@ -1,8 +1,9 @@
 def test_local_knowledge_and_episode_guidance_are_cited_and_fact_only(client, pet):
     knowledge = client.get("/api/v1/knowledge")
     assert knowledge.status_code == 200
-    assert knowledge.json()["review_status"] == "UNREVIEWED_EXAMPLE"
-    assert all(item["source"]["version"] for item in knowledge.json()["entries"])
+    assert knowledge.json()["review_status"] == "APPROVED"
+    assert all(item["review_status"] == "APPROVED" for item in knowledge.json()["entries"])
+    assert all(item["source"]["version"] and item["published_at"] for item in knowledge.json()["entries"])
     episode = client.post("/api/v1/episodes/complete", json={
         "pet_id": pet["id"], "happened_at": "2026-10-20T08:00:00Z", "episode_type": "observation",
         "raw_owner_input": "Stayed beside the door for 30 seconds", "duration_seconds": 30, "location": "door",

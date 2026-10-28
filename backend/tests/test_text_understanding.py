@@ -18,12 +18,12 @@ def complete_payload(pet_id: int, *, safety_result="NORMAL") -> dict:
         "raw_owner_input": "Mochi paused at the doorway and I wondered whether she was uncertain.",
         "observations": [{
             "behavior_type": "pause",
-            "description": "Paused at the doorway for 25 seconds",
+            "description": "Mochi paused at the doorway",
             "source_type": "owner_direct",
             "measured_value": 25,
             "unit": "seconds",
         }],
-        "owner_interpretations": [{"interpretation": "I think she may have been uncertain"}],
+        "owner_interpretations": [{"interpretation": "I wondered whether she was uncertain."}],
         "safety_check": {
             "result": safety_result,
             "danger_signals": danger_signals,
@@ -50,20 +50,29 @@ class FakeAdapter:
         if self.mode == "provider_timeout":
             raise AdapterError("MODEL_TIMEOUT", "Model provider request timed out", 504)
         if self.mode == "invalid_contract":
-            return {"claims": [{"statement": "missing required fields"}], "diagnosis": "forbidden"}
+            return {"observation_candidates": [{"source_quote": "missing evidence"}], "diagnosis": "forbidden"}
         evidence_key = "evidence:999999" if self.mode == "foreign_evidence" else payload.evidence[0].key
+        observation = {
+            "ungrounded_inference": "The dog was monitoring a hallway sound.",
+            "wrong_category": "I wondered whether she was uncertain.",
+            "lens_mismatch": "whether she was uncertain",
+        }.get(self.mode, "Mochi paused at the doorway")
+        observations = [{"source_quote": observation, "evidence_key": evidence_key}]
+        interpretations = [{
+            "source_quote": "I wondered whether she was uncertain.",
+            "evidence_key": payload.evidence[0].key,
+        }]
+        if self.mode == "wrong_category":
+            interpretations = []
+        elif self.mode == "owner_without_marker":
+            observations = []
+            interpretations = [{"source_quote": "Mochi paused at the doorway", "evidence_key": payload.evidence[0].key}]
+        elif self.mode == "duplicate":
+            observations.append(dict(observations[0]))
         return {
-            "contract_version": "understanding-output/v1",
-            "claims": [{
-                "claim_type": "behavior_hypothesis",
-                "statement": "One possible explanation is that the doorway pause related to the immediate context.",
-                "confidence_label": "LOW",
-                "evidence": [{"evidence_key": evidence_key, "role": "SUPPORTS"}],
-                "uncertainties": [{
-                    "kind": "LIMITED_OBSERVATION",
-                    "description": "This is based on one short owner-recorded episode.",
-                }],
-            }],
+            "contract_version": "understanding-output/v2",
+            "observation_candidates": observations,
+            "owner_interpretations": interpretations,
         }
 
 
@@ -116,9 +125,10 @@ def test_analysis_preserves_input_lenses_and_persists_traceability(client, pet):
     assert body["input_snapshot"]["owner_interpretations"][0]["interpretation"] == episode["owner_interpretations"][0]["interpretation"]
     claim = body["claims"][0]
     assert claim["status"] == "PROPOSED"
-    assert claim["confidence_label"] == "LOW"
-    assert claim["evidence_references"][0]["excerpt"] == episode["raw_owner_input"]
-    assert claim["uncertainties"][0]["kind"] == "LIMITED_OBSERVATION"
+    assert claim["candidate_kind"] == "OBSERVATION"
+    assert claim["evidence_references"][0]["excerpt"] == "Mochi paused at the doorway"
+    assert claim["uncertainties"] == []
+    assert body["claims"][1]["candidate_kind"] == "OWNER_INTERPRETATION"
     assert client.get(f"/api/v1/episodes/{episode['id']}").json()["raw_owner_input"] == episode["raw_owner_input"]
 
 
@@ -189,7 +199,15 @@ def test_safety_must_exist_and_every_non_normal_result_blocks_adapter(client, pe
 
 @pytest.mark.parametrize(
     ("mode", "expected_code"),
-    [("invalid_contract", "MODEL_OUTPUT_INVALID"), ("foreign_evidence", "MODEL_EVIDENCE_INVALID")],
+    [
+        ("invalid_contract", "MODEL_OUTPUT_INVALID"),
+        ("foreign_evidence", "MODEL_EXTRACTION_SOURCE_INVALID"),
+        ("ungrounded_inference", "MODEL_EXTRACTION_SOURCE_INVALID"),
+        ("wrong_category", "MODEL_EXTRACTION_CLASSIFICATION_INVALID"),
+        ("owner_without_marker", "MODEL_EXTRACTION_CLASSIFICATION_INVALID"),
+        ("lens_mismatch", "MODEL_EXTRACTION_LENS_INVALID"),
+        ("duplicate", "MODEL_EXTRACTION_OVERLAP"),
+    ],
 )
 def test_invalid_model_results_are_rejected_but_audited(client, pet, mode, expected_code):
     episode = create_episode(client, pet["id"])
@@ -336,7 +354,7 @@ def test_episode_can_change_while_provider_waits_without_breaking_snapshot(clien
     run = response.json()
     assert run["is_stale"] is True
     assert run["input_snapshot"]["raw_owner_input"] == episode["raw_owner_input"]
-    assert run["claims"][0]["evidence_references"][0]["excerpt"] == episode["raw_owner_input"]
+    assert run["claims"][0]["evidence_references"][0]["excerpt"] == "Mochi paused at the doorway"
     assert run["claims"][0]["evidence_references"][0]["evidence_reference_id"] is None
 
 

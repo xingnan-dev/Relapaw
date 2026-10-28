@@ -143,7 +143,7 @@ class EpisodePlanLinkRead(ORMModel):
 
 
 class CompleteEpisodeCreate(EpisodeCreate):
-    observations: list[ObservationCreate] = Field(min_length=1)
+    observations: list[ObservationCreate] = Field(default_factory=list)
     owner_interpretations: list[OwnerInterpretationCreate] = Field(default_factory=list)
     safety_check: SafetyCheckCreate
     plan_id: int | None = None
@@ -161,8 +161,9 @@ class EpisodeUpdate(BaseModel):
     intensity: int | None = Field(default=None, ge=1, le=5)
     location: str | None = Field(default=None, max_length=200)
     trigger_context: str | None = None
-    observations: list[ObservationCreate] = Field(min_length=1)
+    observations: list[ObservationCreate] = Field(default_factory=list)
     owner_interpretations: list[OwnerInterpretationCreate] = Field(default_factory=list)
+    change_summary: str | None = Field(default=None, max_length=500)
 
     @field_validator("happened_at")
     @classmethod
@@ -196,6 +197,21 @@ class FollowUpLinkRead(ORMModel):
         return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
 
+class EpisodeRevisionRead(ORMModel):
+    id: int
+    episode_id: int
+    revision_number: int
+    source: str
+    change_summary: str | None = None
+    snapshot: dict[str, Any]
+    created_at: datetime
+
+    @field_validator("created_at")
+    @classmethod
+    def database_datetime_is_utc(cls, value: datetime) -> datetime:
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
 class EpisodeRead(ORMModel):
     id: int
     pet_id: int
@@ -218,6 +234,7 @@ class EpisodeRead(ORMModel):
     veterinary_escalations: list[VeterinaryEscalationRead] = Field(default_factory=list)
     scheduled_follow_ups: list[FollowUpLinkRead] = Field(default_factory=list)
     result_of_follow_up: FollowUpLinkRead | None = None
+    revisions: list["EpisodeRevisionRead"] = Field(default_factory=list)
 
     @field_validator("happened_at", "created_at", "updated_at")
     @classmethod

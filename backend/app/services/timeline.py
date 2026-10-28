@@ -15,6 +15,7 @@ EPISODE_LOADS = (
     selectinload(Episode.veterinary_escalations),
     selectinload(Episode.scheduled_follow_ups),
     selectinload(Episode.result_of_follow_up),
+    selectinload(Episode.revisions),
 )
 
 

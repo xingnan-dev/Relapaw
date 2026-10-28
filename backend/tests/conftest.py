@@ -1,8 +1,12 @@
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+
+os.environ.setdefault("RELAPAW_DISABLE_DOTENV", "1")
 
 import app.models  # noqa: F401
 from app.db.base import Base
@@ -39,8 +43,10 @@ def client():
     app.dependency_overrides[require_current_user] = lambda: test_user
     app.dependency_overrides[require_csrf] = lambda: None
     test_client = TestClient(app)
+    test_client.app.state.test_engine = engine
     yield test_client
     test_client.close()
+    del test_client.app.state.test_engine
     app.dependency_overrides.clear()
     Base.metadata.drop_all(engine)
 
@@ -64,6 +70,6 @@ def demo_db(tmp_path):
     Base.metadata.create_all(demo_engine)
     with demo_engine.begin() as connection:
         connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
-        connection.execute(text("INSERT INTO alembic_version VALUES ('20261021_0018')"))
+        connection.execute(text("INSERT INTO alembic_version VALUES ('20261026_0027')"))
     yield sessionmaker(bind=demo_engine, expire_on_commit=False), tmp_path / "manifest.json"
     demo_engine.dispose()

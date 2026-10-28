@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 
 DATASET_VERSION = "relapaw-demo/v1-observe-review-baseline"
-SCHEMA_REVISION = "20261021_0018"
+SCHEMA_REVISION = "20261026_0027"
 SYNTHETIC_PET_NAME = "CanCan12"
 RECORDED_MODEL_VERSION = "recorded-demo/v1"
 

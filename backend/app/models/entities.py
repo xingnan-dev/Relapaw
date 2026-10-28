@@ -22,6 +22,13 @@ class Pet(Base):
     approximate_age: Mapped[str | None] = mapped_column(String(100))
     sex: Mapped[str | None] = mapped_column(String(30))
     neutered: Mapped[bool | None] = mapped_column(Boolean)
+    weight_kg: Mapped[float | None] = mapped_column(Float)
+    known_conditions: Mapped[list[str] | None] = mapped_column(JSON)
+    medications: Mapped[list[str] | None] = mapped_column(JSON)
+    allergies: Mapped[list[str] | None] = mapped_column(JSON)
+    living_environment: Mapped[str | None] = mapped_column(Text)
+    veterinarian_confirmed_facts: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    owner_observations: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
@@ -32,6 +39,23 @@ class Pet(Base):
     memory_candidates: Mapped[list["MemoryCandidate"]] = relationship(back_populates="pet", cascade="all, delete-orphan")
     baseline_snapshots: Mapped[list["BaselineSnapshot"]] = relationship(back_populates="pet", cascade="all, delete-orphan")
     owner: Mapped["User"] = relationship(back_populates="pets")
+    avatar: Mapped["PetAvatar | None"] = relationship(back_populates="pet", cascade="all, delete-orphan", uselist=False)
+
+
+class PetAvatar(Base):
+    __tablename__ = "pet_avatars"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pet_id: Mapped[int] = mapped_column(ForeignKey("pets.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    media_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    pet: Mapped[Pet] = relationship(back_populates="avatar")
 
 
 class User(Base):
@@ -47,6 +71,7 @@ class User(Base):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deletion_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deletion_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    onboarding_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     identities: Mapped[list["UserIdentity"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     sessions: Mapped[list["UserSession"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -83,6 +108,33 @@ class IdentityInvitation(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class EmailOtpChallenge(Base):
+    __tablename__ = "email_otp_challenges"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    subject: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    code_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+
+
+class EmailOtpRateLimitEvent(Base):
+    __tablename__ = "email_otp_rate_limit_events"
+    __table_args__ = (
+        CheckConstraint("action IN ('REQUEST', 'VERIFY')", name="ck_email_otp_rate_action"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    action: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    subject_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
 
 
 class UserSession(Base):
@@ -127,6 +179,20 @@ class OwnerProfile(Base):
     observation_preference: Mapped[str | None] = mapped_column(Text)
     response_preference: Mapped[str | None] = mapped_column(Text)
     explanation_preference: Mapped[str | None] = mapped_column(Text)
+    living_together_since: Mapped[date | None] = mapped_column(Date)
+    primary_caregiver: Mapped[str | None] = mapped_column(String(200))
+    household_members: Mapped[list[str] | None] = mapped_column(JSON)
+    daily_routine: Mapped[str | None] = mapped_column(Text)
+    pet_alone_hours: Mapped[float | None] = mapped_column(Float)
+    pet_care_experience: Mapped[str | None] = mapped_column(Text)
+    current_concerns: Mapped[str | None] = mapped_column(Text)
+    reminder_preference: Mapped[str | None] = mapped_column(String(100))
+    recording_capacity: Mapped[str | None] = mapped_column(Text)
+    household_context: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    caregiving_constraints: Mapped[str | None] = mapped_column(Text)
+    ai_context_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    ai_context_fields: Mapped[list[str] | None] = mapped_column(JSON)
+    ai_context_consent_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class PetBaseline(Base):
@@ -175,15 +241,44 @@ class Episode(Base):
         back_populates="result_episode", foreign_keys="EpisodeFollowUp.result_episode_id", uselist=False
     )
     analysis_runs: Mapped[list["AnalysisRun"]] = relationship(back_populates="episode")
-    media_attachments: Mapped[list["MediaAttachment"]] = relationship(back_populates="episode", cascade="all, delete-orphan")
+    media_attachments: Mapped[list["MediaAttachment"]] = relationship(back_populates="episode", cascade="all, delete-orphan", foreign_keys="MediaAttachment.episode_id")
+    revisions: Mapped[list["EpisodeRevision"]] = relationship(
+        back_populates="episode", cascade="all, delete-orphan", order_by="EpisodeRevision.revision_number"
+    )
+
+
+class EpisodeRevision(Base):
+    __tablename__ = "episode_revisions"
+    __table_args__ = (
+        UniqueConstraint("episode_id", "revision_number", name="uq_episode_revision_number"),
+        CheckConstraint("revision_number > 0", name="ck_episode_revision_positive"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    episode_id: Mapped[int] = mapped_column(ForeignKey("episodes.id", ondelete="CASCADE"), nullable=False, index=True)
+    revision_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    source: Mapped[str] = mapped_column(String(40), nullable=False)
+    change_summary: Mapped[str | None] = mapped_column(String(500))
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    episode: Mapped[Episode] = relationship(back_populates="revisions")
 
 
 class MediaAttachment(Base):
     __tablename__ = "media_attachments"
-    __table_args__ = (CheckConstraint("status IN ('AVAILABLE', 'MISSING', 'CORRUPT')", name="ck_media_attachment_status"),)
+    __table_args__ = (
+        CheckConstraint("status IN ('AVAILABLE', 'MISSING', 'CORRUPT')", name="ck_media_attachment_status"),
+        CheckConstraint("ai_candidate_status IN ('NONE', 'PENDING', 'CONFIRMED', 'REJECTED', 'WITHDRAWN')", name="ck_media_ai_candidate_status"),
+        CheckConstraint("(CASE WHEN episode_id IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN life_event_id IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN relationship_event_id IS NOT NULL THEN 1 ELSE 0 END) = 1", name="ck_media_exactly_one_record"),
+        CheckConstraint("duration_seconds IS NULL OR duration_seconds > 0", name="ck_media_duration_positive"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    episode_id: Mapped[int] = mapped_column(ForeignKey("episodes.id", ondelete="CASCADE"), index=True)
+    pet_id: Mapped[int] = mapped_column(ForeignKey("pets.id", ondelete="CASCADE"), nullable=False, index=True)
+    episode_id: Mapped[int | None] = mapped_column(ForeignKey("episodes.id", ondelete="CASCADE"), index=True)
+    life_event_id: Mapped[int | None] = mapped_column(ForeignKey("life_events.id", ondelete="CASCADE"), index=True)
+    relationship_event_id: Mapped[int | None] = mapped_column(ForeignKey("relationship_events.id", ondelete="CASCADE"), index=True)
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     media_type: Mapped[str] = mapped_column(String(100), nullable=False)
     byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -191,8 +286,31 @@ class MediaAttachment(Base):
     storage_key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="AVAILABLE")
     observable_facts: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    episode: Mapped[Episode] = relationship(back_populates="media_attachments")
+    captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    owner_caption: Mapped[str | None] = mapped_column(Text)
+    duration_seconds: Mapped[int | None] = mapped_column(Integer)
+    ai_candidate_observation: Mapped[str | None] = mapped_column(Text)
+    ai_candidate_status: Mapped[str] = mapped_column(String(20), nullable=False, default="NONE")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    episode: Mapped[Episode | None] = relationship(back_populates="media_attachments", foreign_keys=[episode_id])
+    revisions: Mapped[list["MediaAttachmentRevision"]] = relationship(back_populates="attachment", cascade="all, delete-orphan", order_by="MediaAttachmentRevision.revision_number")
+    memory_references: Mapped[list["MemoryCandidateMediaReference"]] = relationship(back_populates="attachment", cascade="all, delete-orphan")
+
+
+class MediaAttachmentRevision(Base):
+    __tablename__ = "media_attachment_revisions"
+    __table_args__ = (UniqueConstraint("attachment_id", "revision_number", name="uq_media_attachment_revision_number"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    attachment_id: Mapped[int] = mapped_column(ForeignKey("media_attachments.id", ondelete="CASCADE"), nullable=False, index=True)
+    revision_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    owner_caption: Mapped[str | None] = mapped_column(Text)
+    ai_candidate_observation: Mapped[str | None] = mapped_column(Text)
+    ai_candidate_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    change_summary: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    attachment: Mapped[MediaAttachment] = relationship(back_populates="revisions")
 
 
 class Observation(Base):
@@ -233,6 +351,7 @@ class LifeEvent(Base):
     happened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     pet: Mapped[Pet] = relationship(back_populates="life_events")
+    media_attachments: Mapped[list["MediaAttachment"]] = relationship(cascade="all, delete-orphan", foreign_keys="MediaAttachment.life_event_id")
 
 
 class ObservationPlan(Base):
@@ -382,16 +501,62 @@ class AnalysisRun(Base):
         return current > source
 
 
+class AssistantGuidanceRun(Base):
+    __tablename__ = "assistant_guidance_runs"
+    __table_args__ = (
+        UniqueConstraint("episode_id", "request_id", name="uq_guidance_run_episode_request"),
+        CheckConstraint("status IN ('RUNNING', 'COMPLETED', 'FAILED', 'BLOCKED_BY_SAFETY')", name="ck_guidance_run_status"),
+        CheckConstraint("mode IN ('RECORD_REVIEW', 'RECENT_CHANGE_COMPARISON', 'VET_TIMELINE')", name="ck_guidance_run_mode"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    episode_id: Mapped[int] = mapped_column(ForeignKey("episodes.id", ondelete="CASCADE"), index=True)
+    request_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    mode: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    adapter_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    model_provider: Mapped[str] = mapped_column(String(100), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    prompt_contract_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    input_contract_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    output_contract_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    input_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    knowledge_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    normalized_output: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    source_episode_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    episode: Mapped["Episode"] = relationship()
+
+    @property
+    def is_stale(self) -> bool:
+        source = self.source_episode_updated_at
+        current = self.episode.updated_at
+        if source.tzinfo is None:
+            source = source.replace(tzinfo=timezone.utc)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=timezone.utc)
+        return current > source
+
+
 class Claim(Base):
     __tablename__ = "claims"
     __table_args__ = (
         CheckConstraint("status IN ('PROPOSED', 'CONFIRMED', 'REJECTED')", name="ck_claim_status"),
         CheckConstraint("confidence_label IN ('LOW', 'MEDIUM', 'HIGH')", name="ck_claim_confidence"),
+        CheckConstraint(
+            "candidate_kind IN ('LEGACY_INTERPRETATION', 'OBSERVATION', 'OWNER_INTERPRETATION')",
+            name="ck_claim_candidate_kind",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     analysis_run_id: Mapped[int] = mapped_column(ForeignKey("analysis_runs.id", ondelete="CASCADE"), index=True)
     claim_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    candidate_kind: Mapped[str] = mapped_column(String(40), nullable=False, default="LEGACY_INTERPRETATION")
     statement: Mapped[str] = mapped_column(Text, nullable=False)
     confidence_label: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="PROPOSED")
@@ -483,6 +648,9 @@ class MemoryCandidate(Base):
     revisions: Mapped[list["MemoryRevision"]] = relationship(
         back_populates="candidate", cascade="all, delete-orphan", order_by="MemoryRevision.revision_number"
     )
+    media_references: Mapped[list["MemoryCandidateMediaReference"]] = relationship(
+        back_populates="candidate", cascade="all, delete-orphan", order_by="MemoryCandidateMediaReference.id"
+    )
 
     @property
     def is_stale(self) -> bool:
@@ -505,6 +673,17 @@ class MemoryCandidate(Base):
         if not self.decisions:
             return "ELIGIBLE"
         return "ACTIVE" if self.decisions[-1].decision == "INCLUDE" else "WITHDRAWN"
+
+
+class MemoryCandidateMediaReference(Base):
+    __tablename__ = "memory_candidate_media_references"
+    __table_args__ = (UniqueConstraint("candidate_id", "media_attachment_id", name="uq_memory_candidate_media_reference"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("memory_candidates.id", ondelete="CASCADE"), nullable=False, index=True)
+    media_attachment_id: Mapped[int] = mapped_column(ForeignKey("media_attachments.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    candidate: Mapped[MemoryCandidate] = relationship(back_populates="media_references")
+    attachment: Mapped[MediaAttachment] = relationship(back_populates="memory_references")
 
 
 class MemoryDecision(Base):
@@ -558,6 +737,7 @@ class RelationshipEvent(Base):
     participants: Mapped[list["RelationshipParticipant"]] = relationship(back_populates="event", cascade="all, delete-orphan", order_by="RelationshipParticipant.id")
     interpretations: Mapped[list["RelationshipInterpretation"]] = relationship(back_populates="event", cascade="all, delete-orphan", order_by="RelationshipInterpretation.id")
     revisions: Mapped[list["RelationshipRevision"]] = relationship(back_populates="event", cascade="all, delete-orphan", order_by="RelationshipRevision.revision_number")
+    media_attachments: Mapped[list["MediaAttachment"]] = relationship(cascade="all, delete-orphan", foreign_keys="MediaAttachment.relationship_event_id")
 
     @property
     def current_owner_interpretation(self) -> str | None:
@@ -598,6 +778,87 @@ class RelationshipRevision(Base):
     source_episode_id: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     event: Mapped[RelationshipEvent] = relationship(back_populates="revisions")
+
+
+class InteractionPatternCandidate(Base):
+    __tablename__ = "interaction_pattern_candidates"
+    __table_args__ = (
+        CheckConstraint("relationship_kind IN ('OWNER_PET', 'PET_PET')", name="ck_interaction_pattern_kind"),
+        CheckConstraint("status IN ('ELIGIBLE', 'CONFIRMED', 'REJECTED', 'WITHDRAWN')", name="ck_interaction_pattern_status"),
+        CheckConstraint("memory_status IN ('NOT_INCLUDED', 'INCLUDED', 'WITHDRAWN')", name="ck_interaction_pattern_memory_status"),
+        CheckConstraint("evidence_count >= 3", name="ck_interaction_pattern_evidence_count"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    relationship_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    participant_pet_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False)
+    initial_self_report: Mapped[str | None] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    observable_pattern: Mapped[str] = mapped_column(Text, nullable=False)
+    counterevidence_summary: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    coverage_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    coverage_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    generator_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    confidence_limit: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ELIGIBLE")
+    memory_status: Mapped[str] = mapped_column(String(20), nullable=False, default="NOT_INCLUDED")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    evidences: Mapped[list["InteractionPatternEvidence"]] = relationship(back_populates="candidate", cascade="all, delete-orphan", order_by="InteractionPatternEvidence.id")
+    revisions: Mapped[list["InteractionPatternRevision"]] = relationship(back_populates="candidate", cascade="all, delete-orphan", order_by="InteractionPatternRevision.revision_number")
+    decisions: Mapped[list["InteractionPatternDecisionRecord"]] = relationship(back_populates="candidate", cascade="all, delete-orphan", order_by="InteractionPatternDecisionRecord.id")
+
+
+class InteractionPatternEvidence(Base):
+    __tablename__ = "interaction_pattern_evidences"
+    __table_args__ = (
+        UniqueConstraint("candidate_id", "relationship_event_id", name="uq_interaction_pattern_event"),
+        CheckConstraint("role IN ('SUPPORTS', 'CONTRADICTS')", name="ck_interaction_pattern_evidence_role"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("interaction_pattern_candidates.id", ondelete="CASCADE"), nullable=False, index=True)
+    relationship_event_id: Mapped[int | None] = mapped_column(ForeignKey("relationship_events.id", ondelete="SET NULL"), index=True)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    observation_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    observation_snapshot: Mapped[str] = mapped_column(Text, nullable=False)
+    happened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    candidate: Mapped[InteractionPatternCandidate] = relationship(back_populates="evidences")
+
+
+class InteractionPatternRevision(Base):
+    __tablename__ = "interaction_pattern_revisions"
+    __table_args__ = (UniqueConstraint("candidate_id", "revision_number", name="uq_interaction_pattern_revision_number"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("interaction_pattern_candidates.id", ondelete="CASCADE"), nullable=False, index=True)
+    revision_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    observable_pattern: Mapped[str] = mapped_column(Text, nullable=False)
+    counterevidence_summary: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence_limit: Mapped[str] = mapped_column(Text, nullable=False)
+    change_summary: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    candidate: Mapped[InteractionPatternCandidate] = relationship(back_populates="revisions")
+
+
+class InteractionPatternDecisionRecord(Base):
+    __tablename__ = "interaction_pattern_decisions"
+    __table_args__ = (
+        CheckConstraint("action IN ('CONFIRM', 'REJECT', 'WITHDRAW', 'INCLUDE_IN_MEMORY', 'WITHDRAW_FROM_MEMORY')", name="ck_interaction_pattern_decision_action"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("interaction_pattern_candidates.id", ondelete="CASCADE"), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(30), nullable=False)
+    previous_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    resulting_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    previous_memory_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    resulting_memory_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    note: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    candidate: Mapped[InteractionPatternCandidate] = relationship(back_populates="decisions")
 
 
 class BaselineSnapshot(Base):
@@ -672,3 +933,25 @@ class AuditEvent(Base):
     subject_pseudonym: Mapped[str] = mapped_column(String(64), nullable=False)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ModelQualification(Base):
+    __tablename__ = "model_qualifications"
+    __table_args__ = (
+        CheckConstraint("status IN ('APPROVED', 'REVOKED')", name="ck_model_qualification_status"),
+    )
+
+    qualification_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    manifest_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    model: Mapped[str] = mapped_column(String(200), nullable=False)
+    endpoint_policy: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    contracts: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    knowledge_set_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    evidence_manifest: Mapped[list[dict[str, str]]] = mapped_column(JSON, nullable=False)
+    approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revocation_reason: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

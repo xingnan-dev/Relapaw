@@ -1,0 +1,34 @@
+{
+  "version": "qualification-run/2026-10-26/v1",
+  "subject": {
+    "provider": "qwen",
+    "model": "qwen3.7-plus-2026-05-26",
+    "region": "cn-beijing",
+    "dataset": "live-qualification/qwen-beijing/v1",
+    "prompt_contracts": [
+      "text-understanding/v5-grounded-claims",
+      "assistant-guidance/v2-seven-sections-source-lineage"
+    ]
+  },
+  "execution": {
+    "requests_sent": 4,
+    "retries": 0,
+    "database_writes": 0,
+    "automatic_hard_gate": "PASSED",
+    "human_review": "FAILED",
+    "qualification_status": "NOT_QUALIFIED"
+  },
+  "case_results": [
+    {"case_id": "qwen-qualification-understanding-zh", "latency_ms": 8234.978, "finding_codes": ["UNRECORDED_ENVIRONMENTAL_CAUSE", "UNRECORDED_INTERNAL_STATE", "OVERCONFIDENT_SPARSE_INPUT"]},
+    {"case_id": "qwen-qualification-understanding-en", "latency_ms": 7932.745, "finding_codes": ["UNRECORDED_ENVIRONMENTAL_CAUSE", "UNRECORDED_INTENT", "UNRECORDED_INTERNAL_STATE"]},
+    {"case_id": "qwen-qualification-guidance-zh", "latency_ms": 8482.099, "finding_codes": ["SAFETY_STATUS_RESTATEMENT", "UNAPPROVED_MEDICAL_DETAIL"]},
+    {"case_id": "qwen-qualification-guidance-en-truncated", "latency_ms": 10782.326, "finding_codes": ["SAFETY_STATUS_RESTATEMENT", "UNCITED_GUIDANCE_ITEM", "UNAPPROVED_MEDICAL_DETAIL"]}
+  ],
+  "privacy": {
+    "raw_provider_outputs_retained": false,
+    "api_key_retained": false,
+    "email_or_user_data_used": false,
+    "inputs": "synthetic"
+  },
+  "decision": "The candidate remains disabled. A new contract and a new explicit request budget are required before another live qualification run."
+}

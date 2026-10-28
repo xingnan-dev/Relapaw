@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { acceptPrivacyConsent, ApiError, getAuthSession, getCsrfToken, getPrivacyNotice, logout, requestLoginChallenge, setCsrfToken, verifyLoginChallenge, type AuthSession } from "../api";
+import { acceptPrivacyConsent, ApiError, completeAccountOnboarding, getAuthSession, getCsrfToken, getPrivacyNotice, logout, requestLoginChallenge, setCsrfToken, verifyLoginChallenge, type AuthSession } from "../api";
 
 type AuthStatus = "loading" | "anonymous" | "consent" | "authenticated" | "expired" | "bootstrap-error" | "error";
 
@@ -8,6 +8,7 @@ interface AuthValue {
   status: AuthStatus;
   signOut: () => Promise<void>;
   retry: () => void;
+  finishOnboarding: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthValue>({
@@ -15,6 +16,7 @@ const AuthContext = createContext<AuthValue>({
   status: "anonymous",
   signOut: async () => undefined,
   retry: () => undefined,
+  finishOnboarding: async () => undefined,
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -24,6 +26,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [preserveChildrenForConsent, setPreserveChildrenForConsent] = useState(false);
   const [bootstrapBusy, setBootstrapBusy] = useState(false);
   const bootstrapInFlight = useRef(false);
+  const statusRef = useRef(status);
+  statusRef.current = status;
 
   async function establish(next: AuthSession, preserveChildren = false) {
     if (bootstrapInFlight.current) return;
@@ -66,25 +70,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const expire = () => {
-      if (status === "authenticated" || status === "consent") {
+      if (statusRef.current === "authenticated" || statusRef.current === "consent") {
         setCsrfToken(null);
         setStatus("expired");
       }
     };
     window.addEventListener("relapaw:session-expired", expire);
     return () => window.removeEventListener("relapaw:session-expired", expire);
-  }, [status]);
+  }, []);
 
   useEffect(() => {
     const requireConsent = () => {
-      if (status === "authenticated") {
+      if (statusRef.current === "authenticated") {
         setPreserveChildrenForConsent(true);
         setStatus("consent");
       }
     };
     window.addEventListener("relapaw:consent-required", requireConsent);
     return () => window.removeEventListener("relapaw:consent-required", requireConsent);
-  }, [status]);
+  }, []);
 
   const value = useMemo<AuthValue>(() => ({
     session,
@@ -97,6 +101,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus("anonymous");
     },
     retry: () => setAttempt((value) => value + 1),
+    async finishOnboarding() {
+      const next = await completeAccountOnboarding();
+      setSession(next);
+    },
   }), [session, status]);
 
   if (status === "loading") return <AuthContext.Provider value={value}><main className="auth-page"><p role="status">正在恢复安全会话…</p></main></AuthContext.Provider>;
