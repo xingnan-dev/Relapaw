@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { CapabilitiesProvider } from "./state/CapabilitiesContext";
@@ -705,6 +705,27 @@ async function openTodayWith(fetchMock: ReturnType<typeof vi.fn>) {
 }
 
 describe("follow-up flow", () => {
+  it("refreshes due items without losing an in-progress completion draft", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    let due = false;
+    const fetchMock = timelineApi((url) => {
+      if (url.startsWith("/api/v1/pets/7/follow-ups")) return json(due ? [dueFollowUp] : []);
+      return undefined;
+    });
+    try {
+      await openTodayWith(fetchMock);
+      await screen.findByText("今天没有需要回看的记录。");
+      due = true;
+      await act(async () => { await vi.advanceTimersByTimeAsync(30000); });
+      fireEvent.click(await screen.findByRole("button", { name: "开始复评" }));
+      fireEvent.change(screen.getByLabelText("复评原始输入"), { target: { value: "等待保存的复评原话" } });
+      await act(async () => { await vi.advanceTimersByTimeAsync(30000); });
+      expect(screen.getByLabelText("复评原始输入")).toHaveValue("等待保存的复评原话");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("shows honest empty state and retries a failed Today request", async () => {
     let attempts = 0;
     const fetchMock = timelineApi((url) => {

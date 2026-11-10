@@ -9,7 +9,6 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$script:DatasetVersion = 'relapaw-demo/v1-observe-review-baseline'
 $script:RepoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $script:BackendDir = [System.IO.Path]::GetFullPath((Join-Path $script:RepoRoot 'backend'))
 $script:FrontendDir = [System.IO.Path]::GetFullPath((Join-Path $script:RepoRoot 'frontend'))
@@ -42,8 +41,14 @@ function Assert-RepositoryLayout {
 
 function Set-DemoEnvironment {
     $env:RELAPAW_ENV = 'demo'
+    $env:RELAPAW_DISABLE_DOTENV = '1'
     $env:RELAPAW_AI_ENABLED = 'false'
+    $env:RELAPAW_EMAIL_IDENTITY_MODE = 'local'
+    $env:RELAPAW_LOCAL_INVITE_CODE = '246810'
+    $env:RELAPAW_SESSION_PEPPER = 'relapaw-synthetic-demo-only'
+    $env:RELAPAW_CORS_ORIGINS = '["http://127.0.0.1:' + $Port + '"]'
     $env:RELAPAW_DATABASE_URL = 'sqlite:///' + ($script:DatabasePath -replace '\\', '/')
+    $env:RELAPAW_MEDIA_DIR = Join-Path $script:DemoDir 'media'
     $env:RELAPAW_STATIC_DIR = $script:StaticDir
 }
 
@@ -136,14 +141,13 @@ function Test-DemoHealth {
     param([int]$TargetPort)
     try {
         $health = Invoke-RestMethod -Uri "http://127.0.0.1:$TargetPort/health" -TimeoutSec 2
-        $capabilities = Invoke-RestMethod -Uri "http://127.0.0.1:$TargetPort/api/v1/capabilities" -TimeoutSec 2
+        $ready = Invoke-RestMethod -Uri "http://127.0.0.1:$TargetPort/ready" -TimeoutSec 2
         return (
             $health.status -eq 'ok' -and
             $health.environment -eq 'demo' -and
             $health.static_frontend -eq $true -and
-            $capabilities.synthetic_data -eq $true -and
-            $capabilities.dataset_version -eq $script:DatasetVersion -and
-            $capabilities.ai_analysis_enabled -eq $false
+            $ready.status -eq 'ready' -and
+            $ready.schema -eq 'current'
         )
     }
     catch {

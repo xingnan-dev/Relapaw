@@ -45,4 +45,5 @@ def test_operator_guide_documents_every_command_and_safety_boundary():
         assert f".\\scripts\\demo.ps1 {action}" in guide
     assert "127.0.0.1" in guide
     assert "不会终止占用进程" in guide
-    assert "不需要账号、邮箱、OTP" in guide
+    assert "demo@example.test" in guide
+    assert "获取验证码不会发邮件" in guide

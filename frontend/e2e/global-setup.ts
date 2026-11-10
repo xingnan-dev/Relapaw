@@ -30,7 +30,9 @@ export default async function globalSetup() {
   await assertPortFree(BACKEND_PORT); await assertPortFree(FRONTEND_PORT);
   if (existsSync(runtime)) rmSync(runtime, { recursive: true, force: true }); mkdirSync(runtime, { recursive: true });
   const runId = `e2e-${randomUUID()}`; const python = resolve(backend, ".venv", "Scripts", "python.exe");
-  const env = { ...process.env }; delete env.RESEND_API_KEY; delete env.RELAPAW_RESEND_API_KEY;
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) =>
+    !/^(RELAPAW_|RESEND_|OPENAI_|DASHSCOPE_|QWEN_)/i.test(name),
+  ));
   Object.assign(env, { RELAPAW_ENV: "test", RELAPAW_DISABLE_DOTENV: "1", RELAPAW_AI_ENABLED: "false", RELAPAW_EMAIL_IDENTITY_MODE: "local", RELAPAW_DATABASE_URL: "sqlite:///./.e2e/relapaw-e2e.db", RELAPAW_MEDIA_DIR: resolve(runtime, "media"), RELAPAW_LOCAL_INVITE_CODE: "246810", RELAPAW_CORS_ORIGINS: JSON.stringify([`http://${HOST}:${FRONTEND_PORT}`]), RELAPAW_DEPLOYMENT_VERSION: runId, RELAPAW_E2E_RUN_ID: runId });
   let backendServer: ChildProcess | undefined; let frontendServer: ChildProcess | undefined;
   try {

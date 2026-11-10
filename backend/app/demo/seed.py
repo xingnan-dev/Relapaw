@@ -24,14 +24,20 @@ from app.models import (
     Claim,
     ClaimEvidenceReference,
     Episode,
+    IdentityInvitation,
     Pet,
     Uncertainty,
     User,
     UserConfirmation,
+    UserIdentity,
 )
 from app.schemas.episode import CompleteEpisodeCreate
 from app.services.baseline import recompute_snapshot
+from app.services.identity import LocalInviteIdentityAdapter
 from app.services.records import create_complete_episode
+
+DEMO_USER_ID = "00000000-0000-0000-0000-00000000d3e0"
+DEMO_EMAIL = "demo@example.test"
 
 
 def manifest_payload(base_now: datetime) -> dict[str, object]:
@@ -128,7 +134,7 @@ def seed_dataset(
 
     try:
         demo_user = User(
-            id="00000000-0000-0000-0000-00000000d3e0",
+            id=DEMO_USER_ID,
             status="DISABLED",
         )
         db.add(demo_user)
@@ -184,6 +190,30 @@ def seed_dataset(
     return True
 
 
+def provision_demo_login(db: Session) -> None:
+    user = db.get(User, DEMO_USER_ID)
+    if user is None or user.status not in {"ACTIVE", "DISABLED"}:
+        raise RuntimeError("Synthetic demo account is unavailable; reset the demo dataset")
+    subject = LocalInviteIdentityAdapter(settings).subject_for(DEMO_EMAIL)
+    assert subject is not None
+    identity = db.scalar(select(UserIdentity).where(
+        UserIdentity.provider == "local-invite", UserIdentity.subject == subject,
+    ))
+    invitation = db.scalar(select(IdentityInvitation).where(
+        IdentityInvitation.provider == "local-invite", IdentityInvitation.subject == subject,
+    ))
+    if identity is not None or invitation is not None:
+        if identity is None or identity.user_id != user.id or invitation is None:
+            raise RuntimeError("Unexpected demo identity; reset the demo dataset")
+        return
+    now = datetime.now(timezone.utc)
+    user.status = "ACTIVE"
+    user.onboarding_completed_at = now
+    db.add(UserIdentity(user_id=user.id, provider="local-invite", subject=subject, last_verified_at=now))
+    db.add(IdentityInvitation(provider="local-invite", subject=subject, status="PENDING"))
+    db.commit()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Seed the versioned Relapaw synthetic demo dataset")
     parser.add_argument("--base-now", type=datetime.fromisoformat, default=datetime.now(timezone.utc))
@@ -192,6 +222,8 @@ def main() -> int:
     expected_database = (demo_directory / "relapaw-demo.db").resolve()
     if settings.environment != "demo" or settings.ai_enabled:
         raise RuntimeError("Seed requires RELAPAW_ENV=demo and RELAPAW_AI_ENABLED=false")
+    if settings.email_identity_mode != "local" or settings.local_invite_code is None:
+        raise RuntimeError("Demo seed requires the local identity adapter and a synthetic code")
     prefix = "sqlite:///"
     if not settings.database_url.startswith(prefix):
         raise RuntimeError("Seed only supports the fixed demo SQLite database")
@@ -201,6 +233,7 @@ def main() -> int:
     manifest = demo_directory / "manifest.json"
     with SessionLocal() as db:
         created = seed_dataset(db, manifest, base_now=args.base_now)
+        provision_demo_login(db)
     print("seeded" if created else "already seeded")
     return 0
 

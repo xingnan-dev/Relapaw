@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 async function login(page: Page, email: string) {
   await page.goto("/");
@@ -32,10 +33,12 @@ async function tabTo(page: Page, accessibleName: string, limit = 30) {
   throw new Error(`Keyboard focus did not reach ${accessibleName}`);
 }
 
-test("isolated empty-account record journey, responsive layout, keyboard and accessible state", async ({ page }, testInfo) => {
+test("isolated empty-account record journey, responsive layout, keyboard and accessible state", async ({ page, baseURL }, testInfo) => {
   test.setTimeout(120000);
   const mobile = testInfo.project.name.includes("mobile");
-  await login(page, mobile ? "alpha-e2e-mobile@example.test" : "alpha-e2e-desktop@example.test");
+  const email = mobile ? "alpha-e2e-mobile@example.test" : "alpha-e2e-desktop@example.test";
+  const petName = mobile ? "Pixel" : "Mochi";
+  await login(page, email);
 
   await expect(page.getByRole("heading", { name: "先看见，再慢慢理解" })).toBeVisible();
   if (mobile) {
@@ -83,7 +86,7 @@ test("isolated empty-account record journey, responsive layout, keyboard and acc
     if (await addPet.isVisible()) await addPet.click();
   }
   await expect(emptySetup).toBeVisible();
-  await page.getByLabel("名字", { exact: true }).fill(mobile ? "Pixel" : "Mochi");
+  await page.getByLabel("名字", { exact: true }).fill(petName);
   await page.getByLabel("物种", { exact: true }).fill("猫");
   await page.getByRole("button", { name: "继续补充一点" }).click();
   await page.getByLabel(/宠物照片/).setInputFiles("public/brand/relapaw-welcome-corgi-v4.png");
@@ -286,16 +289,49 @@ test("isolated empty-account record journey, responsive layout, keyboard and acc
   await expect(page.getByRole("heading", { name: "看到的事实" }).locator("..").getByText("在窗边坐着，身体朝向窗外，持续两分钟。" )).toBeVisible();
   await expect(page.getByRole("heading", { name: "当时的理解" }).locator("..").getByText("我猜它在等待外面的声音。" )).toBeVisible();
   await expect(page.getByText("未发现所列紧急情况")).toBeVisible();
+  await expect(page.getByText("AI 当前关闭", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "生成辅助整理" })).toHaveCount(0);
 
   const mediaPanel = page.getByRole("heading", { name: "照片和视频证据" }).locator("..");
+  const image = await readFile("public/brand/relapaw-welcome-corgi-v4.png");
   await mediaPanel.getByLabel("添加照片或视频").setInputFiles({
-    name: "窗边记录.png", mimeType: "image/png", buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x65, 0x32, 0x65]),
+    name: "窗边记录.png", mimeType: "image/png", buffer: image,
   });
   await expect(mediaPanel.getByText("窗边记录.png")).toBeVisible();
+  const preview = mediaPanel.getByRole("img", { name: "窗边记录.png 预览" });
+  await preview.scrollIntoViewIfNeeded();
+  await expect.poll(() => preview.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBeGreaterThan(0);
+  const mediaUrl = (await mediaPanel.getByRole("link", { name: "打开或下载原文件" }).getAttribute("href"))!;
+  expect((await (await page.request.get(mediaUrl)).body()).equals(image)).toBe(true);
   await mediaPanel.getByLabel("我的原始说明").fill("窗边坐姿的原始照片说明。" );
   await mediaPanel.getByRole("button", { name: "保存媒体说明" }).click();
   await expect(mediaPanel.getByRole("status")).toContainText("旧版本仍可查看");
   await expect(mediaPanel.getByText("修改历史（2）", { exact: true })).toBeVisible();
+
+  await test.step("a synthetic WebM can be previewed and deleted", async () => {
+    const recording = await page.context().browser()!.newContext({
+      recordVideo: { dir: testInfo.outputPath("video-fixture"), size: { width: 320, height: 240 } },
+    });
+    const recorder = await recording.newPage();
+    const video = recorder.video()!;
+    try {
+      await recorder.setContent('<div style="width:100px;height:100px;background:teal">Synthetic media</div>');
+      await recorder.waitForTimeout(1300);
+    } finally {
+      await recording.close();
+    }
+    await mediaPanel.getByLabel("添加照片或视频").setInputFiles({
+      name: "合成视频.webm", mimeType: "video/webm", buffer: await readFile(await video.path()),
+    });
+    const videoCard = mediaPanel.locator("article").filter({ hasText: "合成视频.webm" });
+    await expect(videoCard).toBeVisible();
+    await expect.poll(() => videoCard.locator("video").evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThan(0);
+    const videoUrl = (await videoCard.getByRole("link", { name: "打开或下载原文件" }).getAttribute("href"))!;
+    page.once("dialog", (dialog) => dialog.accept());
+    await videoCard.getByRole("button", { name: "删除媒体" }).click();
+    await expect(videoCard).toHaveCount(0);
+    expect((await page.request.get(videoUrl)).status()).toBe(404);
+  });
 
   const history = page.getByText("修改历史（1 个版本）", { exact: true }).locator("..");
   const technical = page.getByText("技术与来源信息", { exact: true }).locator("..");
@@ -398,4 +434,96 @@ test("isolated empty-account record journey, responsive layout, keyboard and acc
     expect(response?.ok()).toBe(true);
     await expect(page.locator("#root > *").first()).toBeVisible();
   }
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Today" }).click();
+  const plan = page.locator(".today-plan article").filter({ hasText: "观察窗边停留" });
+  await plan.getByRole("button", { name: "完成计划" }).click();
+  await expect(plan).toHaveCount(0);
+  await page.getByRole("button", { name: "Timeline" }).click();
+  await page.getByLabel("搜索 Timeline").fill("窗边安静");
+  await page.getByRole("button", { name: "搜索", exact: true }).click();
+  await page.getByRole("button", { name: /打开记录/ }).click();
+  await page.getByRole("button", { name: "安排复评" }).click();
+  await page.getByRole("button", { name: "次日" }).click();
+  await page.getByRole("button", { name: "确认安排" }).click();
+  await expect(page.getByRole("heading", { name: "记录详情" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "复评关系" }).locator("..")).toContainText("PENDING");
+  await page.getByRole("button", { name: "Us" }).click();
+  await test.step("manual memory can be included and withdrawn with AI off", async () => {
+    const memory = page.getByRole("region", { name: "待你确认的长期记忆" });
+    const statement = "窗边放着蓝色毯子时，它会趴在上面。";
+    await memory.getByLabel("你的原话").fill(statement);
+    await memory.getByRole("button", { name: "建立手工候选" }).click();
+    await expect(memory.getByText(statement, { exact: true })).toBeVisible();
+    await memory.getByRole("button", { name: "纳入长期记忆", exact: true }).click();
+    await expect(memory.locator(".state-heading").getByText("已纳入", { exact: true })).toBeVisible();
+    await memory.getByRole("button", { name: "撤回长期记忆" }).click();
+    await expect(memory.locator(".state-heading").getByText("已撤回", { exact: true })).toBeVisible();
+  });
+
+  const privacy = page.getByRole("dialog", { name: "数据与隐私" });
+  await page.getByRole("button", { name: /数据与隐私/ }).click();
+  const download = page.waitForEvent("download");
+  await privacy.getByRole("button", { name: "下载我的数据" }).click();
+  const exported = await download;
+  expect(exported.suggestedFilename()).toBe("relapaw-account-export.json");
+  const data = JSON.parse(await readFile(await exported.path(), "utf8"));
+  expect(data.pets.map((pet: { name: string }) => pet.name)).toEqual([petName]);
+  expect(data.episode_revisions).toHaveLength(2);
+  expect(data.media_attachments).toHaveLength(1);
+  expect(data.memory_candidates).toHaveLength(1);
+  expect(data.identities[0]).not.toHaveProperty("subject");
+  await privacy.getByRole("button", { name: "关闭" }).click();
+
+  await test.step("a separately signed-in account cannot see the first account's data", async () => {
+    const other = await page.context().browser()!.newContext({ baseURL });
+    try {
+      const otherPage = await other.newPage();
+      await login(otherPage, "isolation-e2e@example.test");
+      await expect.poll(async () => (await otherPage.request.get("/api/v1/pets")).status()).toBe(200);
+      expect(await (await otherPage.request.get("/api/v1/pets")).json()).toEqual([]);
+      expect((await otherPage.request.get(`/api/v1/pets/${data.pets[0].id}`)).status()).toBe(404);
+      expect((await otherPage.request.get(`/api/v1/episodes/${data.episodes[0].id}`)).status()).toBe(404);
+      expect((await otherPage.request.get(mediaUrl)).status()).toBe(404);
+      expect((await page.request.get(mediaUrl)).status()).toBe(200);
+    } finally {
+      await other.close();
+    }
+  });
+
+  await test.step("the only pet can be archived and restored without creating another pet", async () => {
+    const profile = page.getByRole("dialog", { name: "宠物完整档案" });
+    const openProfile = page.getByRole("button", { name: /查看它的档案/ });
+    await openProfile.click();
+    await profile.getByRole("button", { name: "归档档案", exact: true }).click();
+    await profile.getByRole("button", { name: `确认归档 ${petName}` }).click();
+    await expect(page.getByLabel("当前宠物")).toHaveCount(0);
+    if (!(await profile.isVisible())) await openProfile.click();
+    await profile.getByRole("button", { name: "管理已归档档案" }).click();
+    await profile.getByRole("button", { name: `恢复 ${petName}` }).click();
+    await expect(page.getByLabel("当前宠物")).toHaveValue(String(data.pets[0].id));
+  });
+
+  await page.getByRole("button", { name: "安全退出" }).click();
+  await expect(page.getByLabel("受邀邮箱")).toBeVisible();
+  await login(page, email);
+  await expect(page.getByLabel("当前宠物")).toHaveValue(String(data.pets[0].id));
+  await page.getByRole("button", { name: "Timeline" }).click();
+  await page.getByRole("button", { name: /打开记录/ }).click();
+  await page.getByRole("button", { name: "删除记录" }).click();
+  await page.getByRole("button", { name: "确认删除", exact: true }).click();
+  await expect.poll(async () => (await page.request.get(`/api/v1/episodes/${data.episodes[0].id}`)).status()).toBe(404);
+  expect((await page.request.get(mediaUrl)).status()).toBe(404);
+  await page.getByRole("button", { name: "Us" }).click();
+  await page.getByRole("button", { name: /数据与隐私/ }).click();
+  const deleteAccount = privacy.getByRole("button", { name: "请求删除账户" });
+  await expect(deleteAccount).toBeDisabled();
+  await privacy.getByLabel("输入 DELETE MY ACCOUNT 以确认").fill("DELETE MY ACCOUNT");
+  const deletion = page.waitForResponse((response) => response.url().endsWith("/api/v1/privacy/account") && response.request().method() === "DELETE");
+  await deleteAccount.click();
+  const response = await deletion;
+  expect(response.status()).toBe(202);
+  await expect(page.getByLabel("受邀邮箱")).toBeVisible();
+  expect((await page.request.get("/api/v1/privacy/export")).status()).toBe(401);
 });

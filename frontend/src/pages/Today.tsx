@@ -19,20 +19,46 @@ export function Today({ onAddPet, onUnderstand, onOpenEpisode, startPlanCreation
   const [recent, setRecent] = useState<Episode[]>([]);
   const [recentState, setRecentState] = useState<"loading" | "ready" | "error">("loading");
   const loadGeneration = useRef(0);
+  const followLoadGeneration = useRef(0);
+
+  const refreshFollowUps = useCallback(async () => {
+    const generation = ++followLoadGeneration.current;
+    if (!pet) { setFollowUps([]); setFollowState("ready"); return; }
+    try {
+      const items = await listFollowUps(pet.id);
+      if (followLoadGeneration.current === generation) {
+        setFollowUps(items); setFollowState("ready");
+      }
+    } catch {
+      if (followLoadGeneration.current === generation) setFollowState("error");
+    }
+  }, [pet]);
 
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current;
     setFollowUps([]); setPlans([]); setRecent([]);
     if (!pet) { setFollowState("ready"); setPlanState("ready"); setRecentState("ready"); return; }
     setFollowState("loading");
-    try { const items = await listFollowUps(pet.id); if (loadGeneration.current === generation) { setFollowUps(items); setFollowState("ready"); } }
-    catch { if (loadGeneration.current === generation) setFollowState("error"); }
+    await refreshFollowUps();
     setPlanState("loading");
     try { const items = (await listObservationPlans(pet.id)).filter((item) => item.status === "ACTIVE"); if (loadGeneration.current === generation) { setPlans(items); setPlanState("ready"); } } catch { if (loadGeneration.current === generation) setPlanState("error"); }
     setRecentState("loading");
     try { const from = new Date(Date.now() - 7 * 86400000).toISOString(); const items = (await getTimeline(pet.id, 1, 5, { from })).items; if (loadGeneration.current === generation) { setRecent(items); setRecentState("ready"); } } catch { if (loadGeneration.current === generation) setRecentState("error"); }
-  }, [pet]);
+  }, [pet, refreshFollowUps]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!pet) return;
+    const refresh = () => {
+      if (document.visibilityState === "visible") void refreshFollowUps();
+    };
+    const timer = window.setInterval(refresh, 30000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+      followLoadGeneration.current += 1;
+    };
+  }, [pet, refreshFollowUps]);
 
   async function confirmCancel() {
     if (!cancelTarget) return;

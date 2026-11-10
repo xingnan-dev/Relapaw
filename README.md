@@ -1,74 +1,110 @@
-# Relapaw
+# RelaPaw
 
-Relapaw 是面向宠物主人的 AI 行为理解与人宠关系 Copilot。产品坚持 **Observation ≠ Interpretation**：帮助主人区分客观观察与主观理解，不替宠物说话，也不进行疾病或心理诊断。
+RelaPaw 帮助宠物主人区分事实与自己的理解，保留原始记录，按计划复评，并回看长期变化。当前交付为本地响应式 Web。AI 默认关闭，核心旅程使用本地账号与合成数据即可完成。
 
-> Beyond the Paw. The Bond.  
-> 两心相照，寂而相通。
+## 从空库启动（Windows PowerShell）
 
-## 技术栈
+使用 Python 3.14 和 Node.js 24。以下命令在 **产品体验 Beta 工作区**运行。两套本地服务都只监听回环地址，关闭服务时分别按 Ctrl+C。
 
-- 前端：React、TypeScript、Vite、Vitest、Testing Library
-- 后端：Python、FastAPI、Pydantic v2、SQLAlchemy 2.x、Alembic
-- 数据库：SQLite（开发期），通过 ORM、迁移脚本和环境配置保留 PostgreSQL 边界
-- 接口与测试：REST、pytest、Vitest
+### 终端一 · 后端
 
-## 本地启动
+```powershell
+Set-Location E:\Relapaw-ProductExperienceBeta\backend
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 
-建议使用 Python 3.11+ 与 Node.js 20+。当前环境已在 Python 3.14.4 与 Node.js 24 上完成回归。
+# 在此 PowerShell 进程清除继承的 RelaPaw/供应商配置。
+Get-ChildItem Env: | Where-Object Name -Match '^(RELAPAW_|RESEND_|OPENAI_|DASHSCOPE_|QWEN_)' |
+  ForEach-Object { Remove-Item -LiteralPath ("Env:" + $_.Name) }
+$acceptanceDir = Join-Path $env:TEMP ("relapaw-local-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory $acceptanceDir | Out-Null
+$env:RELAPAW_DISABLE_DOTENV = '1'
+$env:RELAPAW_AI_ENABLED = 'false'
+$env:RELAPAW_EMAIL_IDENTITY_MODE = 'local'
+$env:RELAPAW_LOCAL_INVITE_CODE = '246810'
+$env:RELAPAW_SESSION_PEPPER = 'local-acceptance-only'
+$env:RELAPAW_CORS_ORIGINS = '["http://127.0.0.1:5173"]'
+$env:RELAPAW_DATABASE_URL = 'sqlite:///' + ((Join-Path $acceptanceDir 'relapaw.db') -replace '\\', '/')
+$env:RELAPAW_MEDIA_DIR = Join-Path $acceptanceDir 'relapaw_media'
 
-### 合成数据演示（推荐）
+.\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe -m app.demo.invite_local first@example.test
+.\.venv\Scripts\python.exe -m app.demo.invite_local second@example.test
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
 
-准备好 `backend/.venv` 与前端依赖后，在仓库根目录执行：
+数据库和媒体目录位于 `$acceptanceDir`。如需保留并复用本地记录，请在同一终端重启服务或继续使用该目录的配置。API 文档位于 `http://127.0.0.1:8000/docs`，`/ready` 检查数据库和迁移版本。
+
+### 终端二 · 前端
+
+```powershell
+Set-Location E:\Relapaw-ProductExperienceBeta\frontend
+npm.cmd ci
+$env:VITE_API_PROXY_TARGET = 'http://127.0.0.1:8000'
+npm.cmd run dev -- --host 127.0.0.1 --port 5173 --strictPort
+```
+
+打开 `http://127.0.0.1:5173/`。填写 `first@example.test`，点击“获取验证码”，在页面输入固定本地测试码 `246810`，然后登录、同意数据约定并完成引导。用无痕窗口与 `second@example.test` 验证数据隔离。两个账号均使用本地适配器，获取验证码只创建本地挑战。
+
+- **今天**提供记录入口、观察计划、待复评和近期记录。
+- **记录 / 足迹**支持保存原话与安全检查，选填事实与理解，关联计划，搜索、修订、安排复评及管理附件。
+- **我们**提供宠物档案、头像、归档与恢复、基线、手工长期记忆、生活及关系事件、照护背景和数据与隐私入口。账户导出包含 JSON 与媒体元数据，原文件在媒体入口逐项保存。
+- AI 保持关闭。受控模型评估、非医疗知识和真机范围见[产品体验 Beta 使用手册](docs/PRODUCT_EXPERIENCE_BETA_GUIDE.md)。
+
+## 自动复验
+
+后端在新的 PowerShell 中执行，避免继承手工启动的数据库和环境配置：
+
+```powershell
+Set-Location E:\Relapaw-ProductExperienceBeta\backend
+Get-ChildItem Env: | Where-Object Name -Match '^(RELAPAW_|RESEND_|OPENAI_|DASHSCOPE_|QWEN_)' |
+  ForEach-Object { Remove-Item -LiteralPath ("Env:" + $_.Name) }
+$env:RELAPAW_DISABLE_DOTENV = '1'
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+前端在 `frontend` 中执行：
+
+```powershell
+npm.cmd test
+npm.cmd run build
+$env:PLAYWRIGHT_BROWSERS_PATH = '0'
+npx.cmd playwright install chromium
+npm.cmd run test:e2e
+```
+
+Playwright 另起 `127.0.0.1:8765` 与 `127.0.0.1:4173`，每次用新的 `backend/.e2e` 数据和预置合成邀请，覆盖桌面与移动 Chromium 视口。HTML 报告位于 `frontend/playwright-report/index.html`。
+
+只跑到期复评与关系补测可执行 `npm.cmd run test:e2e -- followups-relationships`。用例从页面建档和安排复评，仅在本次运行的 `backend/.e2e/relapaw-e2e.db` 调整复评到期时间，并推进浏览器测试时钟。关系候选的跨日证据由页面表单填写合成日期。
+
+入口、步骤、预期、结果和待补测项见[本地功能验收表](docs/LOCAL_FUNCTIONAL_ACCEPTANCE.md)。
+
+### 备份和恢复本次临时数据
+
+停止后端和前端。在仍保留 `$acceptanceDir` 的终端一中，把备份工具所在的应用目录复制到该临时目录，然后从临时目录执行。恢复会覆盖其中的数据库和媒体。
+
+```powershell
+$python = (Resolve-Path .\.venv\Scripts\python.exe).Path
+Copy-Item -LiteralPath .\app -Destination $acceptanceDir -Recurse
+Push-Location -LiteralPath $acceptanceDir
+try {
+  & $python -m app.local_data backup --archive acceptance.zip
+  if ($LASTEXITCODE -ne 0) { throw '备份失败' }
+  & $python -m app.local_data restore --archive acceptance.zip --confirm-restore
+} finally { Pop-Location }
+```
+
+使用默认工作区数据路径的 CLI 示例见[本地数据手册](docs/LOCAL_ALPHA_GUIDE.md#备份与恢复)。
+
+## 固定合成数据演示
+
+完成依赖安装后，在 **Beta 工作区根目录**运行：
 
 ```powershell
 .\scripts\demo.ps1 start
 .\scripts\demo.ps1 verify
+# 在浏览器查看合成数据后停止
 .\scripts\demo.ps1 stop
 ```
 
-演示页面位于 `http://127.0.0.1:8000/`。固定演示数据完全合成，保存在独立的 `backend/.demo/relapaw-demo.db`，运行时 AI 默认关闭。需要恢复固定数据时执行 `.\scripts\demo.ps1 reset`，再重新 `start`。完整说明见[演示操作手册](docs/DEMO_OPERATOR_GUIDE.md)。长期本地使用、媒体存储和备份恢复见[本地 Alpha 使用手册](docs/LOCAL_ALPHA_GUIDE.md)。
-
-### 后端
-
-```powershell
-cd E:\Relapaw\backend
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.\.venv\Scripts\python.exe -m alembic upgrade head
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
-```
-
-API 默认位于 `http://localhost:8000`，交互文档位于 `http://localhost:8000/docs`。数据库连接可通过 `RELAPAW_DATABASE_URL` 配置。应用启动不再自动建表，数据库结构统一由 Alembic 管理。
-
-若要在内部评估环境显式启用 Phase 2 文本 Understanding，请把仓库根目录 `.env.example` 中的变量复制到 `backend/.env`，填写服务端专用的 `OPENAI_API_KEY` 和 `RELAPAW_OPENAI_MODEL`，并设置 `RELAPAW_AI_ENABLED=true`。配置 Key 本身不会开启运行时 AI；比赛演示保持默认 `false`。密钥不得放入前端或提交到 Git；模型未配置时接口会明确返回 `MODEL_NOT_CONFIGURED`，不会生成替代结果。可选的 `RELAPAW_OPENAI_BASE_URL` 可指向实现 Responses API 的 OpenAI 兼容服务，`RELAPAW_MODEL_PROVIDER` 用于如实记录 Provider 名称；超时和最大输出分别由 `RELAPAW_OPENAI_TIMEOUT_SECONDS` 与 `RELAPAW_OPENAI_MAX_OUTPUT_TOKENS` 控制。
-
-阿里云百炼 Qwen 示例（仅填写在 `backend/.env`）：`RELAPAW_MODEL_PROVIDER=qwen`、`RELAPAW_OPENAI_MODEL=qwen3.8-flash`、`RELAPAW_OPENAI_BASE_URL=https://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`，并把百炼 API Key 填入 `OPENAI_API_KEY`。请按实际地域替换端点和 WorkspaceId；不要把真实密钥写入仓库。由于百炼 Responses 接口未列出 Structured Outputs 参数，Qwen 配置会使用同一官方 SDK 的 OpenAI-compatible Chat Completions `parse`；OpenAI 配置仍优先使用 Responses API。
-
-### 前端
-
-```powershell
-cd E:\Relapaw\frontend
-npm ci
-npm run dev
-```
-
-前端默认位于 `http://localhost:5173`，开发服务器将 `/api` 代理到后端。当前宠物由应用状态与本地持久化选择，不再硬编码宠物 ID。
-
-### 测试与构建
-
-```powershell
-cd E:\Relapaw\backend
-.\.venv\Scripts\python.exe -m pytest
-.\.venv\Scripts\python.exe -m alembic current
-
-cd E:\Relapaw\frontend
-npm test -- --run
-npm run build
-```
-
-## 当前阶段
-
-Phase 2 文本 Understanding、Phase 3 长期记忆/量化 Baseline 与 Evaluation & Safety 已完成。当前 Qwen `qwen3.8-flash` + `text-understanding/v5-grounded-claims` 的真实资格结论为 `NOT_QUALIFIED`。
-
-真实文本分析使用可选的 OpenAI Responses Adapter；未配置服务端 key/model 时安全返回 `MODEL_NOT_CONFIGURED`。`NOT_QUALIFIED` 表示当前组合不得被描述为已获得产品语义质量资格，不影响离线评估与失败审计证据的有效性。当前仍不包含 RAG、Agent Loop、多模态识别、自动诊断、处方/用药建议或模型自动修改人工记录与 Baseline。当前比赛版本采用[本地可重复演示](docs/DEMO_RELEASE_PROFILE.md)，只使用合成数据且默认禁用运行时 AI；运行包 Batch 1–4 已完成。另见 [产品核心](docs/PRODUCT_CORE.md)、[真实产品首发契约](docs/LAUNCH_PRODUCT_SCOPE.md)、[首发差距审计](docs/LAUNCH_GAP_AUDIT.md)、[P0-1 身份与租户架构](docs/P0_1_IDENTITY_TENANCY_ARCHITECTURE.md)、[技术架构](docs/ARCHITECTURE.md)、[UX 架构](docs/UX_ARCHITECTURE.md)、[产品路线](docs/ROADMAP.md) 与 [AI Coding 开发生命周期](docs/development/INDEX.md)。
+打开 `http://127.0.0.1:8000/`，使用 `demo@example.test` 与本地测试码 `246810`，同意本地数据约定后查看固定合成档案。数据位于 Beta 工作区的 `backend/.demo`，详见[演示操作手册](docs/DEMO_OPERATOR_GUIDE.md)。

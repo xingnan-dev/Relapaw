@@ -9,7 +9,15 @@ from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models import IdentityInvitation
 
-EMAILS = ("alpha-e2e-desktop@example.test", "alpha-e2e-mobile@example.test")
+EMAILS = (
+    "alpha-e2e-desktop@example.test",
+    "alpha-e2e-mobile@example.test",
+    "isolation-e2e@example.test",
+    "followup-desktop@example.test",
+    "followup-mobile@example.test",
+    "relationships-desktop@example.test",
+    "relationships-mobile@example.test",
+)
 
 if __name__ == "__main__":
     expected = (Path(__file__).resolve().parents[1] / ".e2e" / "relapaw-e2e.db").resolve()

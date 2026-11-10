@@ -7,7 +7,7 @@ from app.services.media_storage import retry_pending
 
 BACKEND = Path(__file__).resolve().parents[1]
 DATABASE, MEDIA, BACKUPS = BACKEND / "relapaw.db", BACKEND / "relapaw_media", BACKEND / ".local-backups"
-MEDIA_NAME = re.compile(r"[0-9a-f]{32}")
+MEDIA_NAME = re.compile(r"(?:avatar-)?[0-9a-f]{32}")
 
 def digest(path: Path) -> str:
     value = hashlib.sha256()
@@ -19,6 +19,13 @@ def check_db(path: Path) -> None:
     with closing(sqlite3.connect(path)) as db:
         if db.execute("PRAGMA integrity_check").fetchone()[0] != "ok": raise RuntimeError("SQLite integrity check failed")
         if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='alembic_version'").fetchone(): raise RuntimeError("Migration table missing")
+
+def media_rows(database: Path) -> list[tuple[str, str, int]]:
+    with closing(sqlite3.connect(database)) as db:
+        rows = db.execute("SELECT storage_key, sha256, byte_size FROM media_attachments WHERE status = 'AVAILABLE'").fetchall()
+        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='pet_avatars'").fetchone():
+            rows.extend(db.execute("SELECT storage_key, sha256, byte_size FROM pet_avatars").fetchall())
+    return rows
 
 def archive_path(name: str | None) -> Path:
     BACKUPS.mkdir(exist_ok=True)
@@ -36,8 +43,7 @@ def backup(name: str | None) -> Path:
         with closing(sqlite3.connect(DATABASE)) as source, closing(sqlite3.connect(snapshot)) as destination: source.backup(destination)
         check_db(snapshot); media_stage = stage / "media"; media_stage.mkdir(); files = []
         retry_pending(MEDIA)
-        with closing(sqlite3.connect(snapshot)) as db:
-            rows = db.execute("SELECT storage_key, sha256, byte_size FROM media_attachments WHERE status = 'AVAILABLE'").fetchall()
+        rows = media_rows(snapshot)
         if MEDIA.exists():
             if MEDIA.is_symlink(): raise RuntimeError("Unsafe media directory")
             for key, expected_hash, expected_size in rows:
@@ -60,6 +66,7 @@ def restore(name: str) -> Path:
     if not source.is_file(): raise RuntimeError("Backup not found")
     with tempfile.TemporaryDirectory(dir=BACKUPS) as raw:
         stage = Path(raw); total = 0
+        (stage / "media").mkdir()
         with zipfile.ZipFile(source) as archive:
             entries = archive.infolist()
             if len(entries) > 10002: raise RuntimeError("Archive contains too many files")
