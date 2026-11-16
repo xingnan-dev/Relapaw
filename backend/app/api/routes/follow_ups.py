@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_episode, require_pet
+from app.api.deps import require_csrf, require_current_user, require_episode, require_follow_up, require_pet
 from app.db.session import get_db
 from app.domain.enums import FollowUpStatus
+from app.models import User
 from app.schemas.episode import EpisodeRead
 from app.schemas.follow_up import FollowUpComplete, FollowUpCreate, FollowUpListItem, FollowUpRead
 from app.services.follow_ups import (
@@ -11,15 +12,14 @@ from app.services.follow_ups import (
     complete_follow_up,
     create_follow_up,
     list_pet_follow_ups,
-    require_follow_up,
 )
 
 router = APIRouter(tags=["follow-ups"])
 
 
 @router.post("/episodes/{episode_id}/follow-ups", response_model=FollowUpRead, status_code=201)
-def schedule_follow_up(episode_id: int, payload: FollowUpCreate, db: Session = Depends(get_db)):
-    episode = require_episode(db, episode_id)
+def schedule_follow_up(episode_id: int, payload: FollowUpCreate, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
+    episode = require_episode(db, episode_id, user, for_update=True)
     try:
         follow_up = create_follow_up(db, episode, payload.scheduled_at)
         db.commit()
@@ -36,8 +36,9 @@ def get_pet_follow_ups(
     timing: str | None = Query(default=None, pattern="^(ACTIONABLE|DUE|OVERDUE|UPCOMING)$"),
     timezone_offset_minutes: int = Query(default=0, ge=-840, le=840),
     db: Session = Depends(get_db),
+    user: User = Depends(require_current_user),
 ):
-    require_pet(db, pet_id)
+    require_pet(db, pet_id, user)
     items = list_pet_follow_ups(db, pet_id, status, timing, timezone_offset_minutes)
     return [
         FollowUpListItem.model_validate({
@@ -52,8 +53,8 @@ def get_pet_follow_ups(
 
 
 @router.post("/follow-ups/{follow_up_id}/complete", response_model=EpisodeRead)
-def finish_follow_up(follow_up_id: int, payload: FollowUpComplete, db: Session = Depends(get_db)):
-    follow_up = require_follow_up(db, follow_up_id)
+def finish_follow_up(follow_up_id: int, payload: FollowUpComplete, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
+    follow_up = require_follow_up(db, follow_up_id, user, for_update=True)
     try:
         episode = complete_follow_up(db, follow_up, payload)
         db.commit()
@@ -64,8 +65,8 @@ def finish_follow_up(follow_up_id: int, payload: FollowUpComplete, db: Session =
 
 
 @router.post("/follow-ups/{follow_up_id}/cancel", response_model=FollowUpRead)
-def cancel_scheduled_follow_up(follow_up_id: int, db: Session = Depends(get_db)):
-    follow_up = require_follow_up(db, follow_up_id)
+def cancel_scheduled_follow_up(follow_up_id: int, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
+    follow_up = require_follow_up(db, follow_up_id, user, for_update=True)
     try:
         result = cancel_follow_up(follow_up)
         db.commit()

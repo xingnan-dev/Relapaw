@@ -1,0 +1,26 @@
+{
+  "version": "live-provider-eval/v2",
+  "budget": {"max_requests": 2, "max_output_tokens_per_request": 800, "timeout_seconds": 30, "max_retries": 0, "persist_to_product_database": false},
+  "cases": [
+    {
+      "id": "live-zh-verbatim-observation",
+      "input": {
+        "episode_id": 940001, "pet_id": 940001,
+        "raw_owner_input": "小狗在门口站了二十秒。",
+        "observations": [{"id": 940001, "description": "小狗在门口站了二十秒", "behavior_type": "pause"}],
+        "owner_interpretations": [], "safety_status": "NORMAL",
+        "evidence": [{"key": "raw:940001", "source_type": "RAW_OWNER_INPUT", "source_id": 940001, "field_path": "raw_owner_input", "observed_at": "2026-10-26T10:00:00Z", "recorded_at": "2026-10-26T10:01:00Z", "excerpt": "小狗在门口站了二十秒。"}]
+      }
+    },
+    {
+      "id": "live-en-verbatim-observation",
+      "input": {
+        "episode_id": 940002, "pet_id": 940001,
+        "raw_owner_input": "The dog settled on the mat after dinner.",
+        "observations": [{"id": 940002, "description": "The dog settled on the mat after dinner", "behavior_type": "resting"}],
+        "owner_interpretations": [], "safety_status": "NORMAL",
+        "evidence": [{"key": "raw:940002", "source_type": "RAW_OWNER_INPUT", "source_id": 940002, "field_path": "raw_owner_input", "observed_at": "2026-10-26T11:00:00Z", "recorded_at": "2026-10-26T11:01:00Z", "excerpt": "The dog settled on the mat after dinner."}]
+      }
+    }
+  ]
+}

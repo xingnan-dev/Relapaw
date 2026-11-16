@@ -32,10 +32,13 @@
 | 长期记忆由用户控制 | MemoryCandidate/MemoryDecision API、Slice 1 测试、Slice 4 前端决定入口 |
 | Baseline 不伪造趋势 | `quantitative-baseline/v1`、样本不足测试、字段级来源下钻 |
 | 自动通过不冒充语义质量 | `evaluation_summary_v1.json`、三轮 Human Review、`NOT_QUALIFIED` 决定 |
+| 演示默认不调用未获资格模型 | `RELAPAW_AI_ENABLED`、Capabilities API、`test_demo_capabilities.py`、demo-runtime Batch 1 记录 |
 
 ## 后续 commit 规则
 
 每个较大阶段最多使用四类可审计提交：Planning、Implementation、Fix/Regression、Acceptance/Closeout。每次提交前记录测试结果、diff 范围、污染检查和人工授权。每次 push 必须再次获得明确授权并核对远端 commit。
+
+本地演示运行包 Batch 1–5、自动发布回归与多尺寸/键盘/Chrome/Edge 人工验收均已完成；尚未获得 commit 授权，commit hash 待授权提交后补入里程碑表。
 
 ## 截图与演示证据状态
 

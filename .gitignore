@@ -6,8 +6,15 @@ backend/relapaw.db
 backend/phase01_migration_test.db
 backend/*_verify*.db
 backend/.coverage
+backend/.demo/
+backend/.local-backups/
+backend/relapaw_media/
+backend/.pytest-demo-tmp/
 frontend/node_modules/
 frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+backend/.e2e/
 frontend/.vite/
 frontend/.npm-cache/
 frontend/*.tsbuildinfo

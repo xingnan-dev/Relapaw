@@ -75,9 +75,21 @@ class ProposedClaim(StrictModel):
     uncertainties: list[ProposedUncertainty] = Field(min_length=1)
 
 
-class UnderstandingOutput(StrictModel):
+class LegacyUnderstandingOutput(StrictModel):
+    """Read-only v1 contract retained for frozen historical evaluation evidence."""
     contract_version: Literal["understanding-output/v1"] = "understanding-output/v1"
     claims: list[ProposedClaim]
+
+
+class ExtractedTextSpan(StrictModel):
+    source_quote: str = Field(min_length=1, max_length=2000)
+    evidence_key: str = Field(min_length=1, max_length=200)
+
+
+class UnderstandingOutput(StrictModel):
+    contract_version: Literal["understanding-output/v2"] = "understanding-output/v2"
+    observation_candidates: list[ExtractedTextSpan] = Field(max_length=20)
+    owner_interpretations: list[ExtractedTextSpan] = Field(max_length=20)
 
 
 class AdapterDescriptor(StrictModel):
@@ -87,7 +99,7 @@ class AdapterDescriptor(StrictModel):
     model_version: str
     prompt_contract_version: str
     input_contract_version: str = "understanding-input/v1"
-    output_contract_version: str = "understanding-output/v1"
+    output_contract_version: str = "understanding-output/v2"
 
 
 class ConfirmationCreate(StrictModel):
@@ -144,6 +156,7 @@ class ClaimRead(ORMModel):
     id: int
     analysis_run_id: int
     claim_type: str
+    candidate_kind: Literal["LEGACY_INTERPRETATION", "OBSERVATION", "OWNER_INTERPRETATION"]
     statement: str
     confidence_label: ClaimConfidence
     status: ClaimStatus

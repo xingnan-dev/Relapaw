@@ -57,13 +57,15 @@ function StickerCluster({ mood }: { mood: keyof typeof moodStickers }) {
   </div>;
 }
 
-export function Onboarding({ onComplete, finalUnderlay }: { onComplete: () => void; finalUnderlay?: ReactNode }) {
+export function Onboarding({ onComplete, finalUnderlay, reviewMode = false }: { onComplete: () => void; finalUnderlay?: ReactNode; reviewMode?: boolean }) {
   const [index, setIndex] = useState(0);
   const [turn, setTurn] = useState<{ to: number | null; direction: "forward" | "back" } | null>(null);
   const timers = useRef<number[]>([]);
   const slide = slides[index];
+  const headingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => () => timers.current.forEach(window.clearTimeout), []);
+  useEffect(() => { if (!turn) headingRef.current?.focus(); }, [index, turn]);
 
   function turnPage(direction: 1 | -1) {
     if (turn) return;
@@ -90,7 +92,7 @@ export function Onboarding({ onComplete, finalUnderlay }: { onComplete: () => vo
       <span className="onboarding-tape" aria-hidden="true" />
       <div className="onboarding-story__copy">
         <p className="eyebrow">第 {cardIndex + 1} 张小纸条</p>
-        <h1>{card.title}</h1>
+        <h1 ref={layer === "current" ? headingRef : undefined} tabIndex={layer === "current" ? -1 : undefined}>{card.title}</h1>
         <p className="onboarding-subtitle">{card.subtitle}</p>
         <p>{card.body}</p>
         <p className="onboarding-hand-note">{card.note}</p>
@@ -100,20 +102,20 @@ export function Onboarding({ onComplete, finalUnderlay }: { onComplete: () => vo
   }
 
   return (
-    <main className={`onboarding ${turn?.to === null ? "onboarding--final-turn" : ""}`}>
+    <main className={`onboarding ${turn?.to === null ? "onboarding--final-turn" : ""}`} aria-label={reviewMode ? "关于 Relapaw" : "首次使用引导"}>
       {turn?.to === null && finalUnderlay && <div className="onboarding-final-underlay" aria-hidden="true">{finalUnderlay}</div>}
       <div className="onboarding-progress" aria-label={`第 ${index + 1} 页，共 ${slides.length} 页`}>
-        {slides.map((_, step) => <span key={step} className={step === index ? "active" : ""} />)}
+        {slides.map((_, step) => <span key={step} className={step === index ? "active" : ""} aria-current={step === index ? "step" : undefined} />)}
       </div>
       <div className="onboarding-stage">
         {turn?.to != null && storyCard(turn.to, "under")}
         {storyCard(index, turn ? "turning" : "current")}
       </div>
       <div className="onboarding-actions">
-        <button type="button" className="text-button" onClick={onComplete} disabled={Boolean(turn)}>跳过</button>
+        <button type="button" className="text-button" onClick={onComplete} disabled={Boolean(turn)}>{reviewMode ? "关闭介绍" : "跳过介绍"}</button>
         {index > 0 && <button type="button" onClick={() => turnPage(-1)} disabled={Boolean(turn)}>返回</button>}
         <button type="button" className="primary" onClick={() => turnPage(1)} disabled={Boolean(turn)}>
-          {index === slides.length - 1 ? "翻到它的档案" : "翻到下一页"}
+          {index === slides.length - 1 ? (reviewMode ? "看完了" : "开始建立档案") : "翻到下一页"}
         </button>
       </div>
     </main>

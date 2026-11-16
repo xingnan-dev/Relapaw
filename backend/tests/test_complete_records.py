@@ -71,7 +71,7 @@ def test_manual_danger_signal_creates_open_escalation(client, pet):
 def test_complete_episode_can_link_a_plan_for_the_same_pet(client, pet):
     plan = client.post(
         f"/api/v1/pets/{pet['id']}/observation-plans",
-        json={"goal": "Observe hiding"},
+        json={"goal": "Observe hiding", "status": "ACTIVE"},
     ).json()
     payload = complete_payload(pet["id"])
     payload["plan_id"] = plan["id"]
@@ -105,11 +105,41 @@ def test_complete_episode_rejects_inconsistent_safety_input_without_writing(clie
     assert client.get(f"/api/v1/pets/{pet['id']}/timeline").json()["total"] == 0
 
 
-def test_complete_episode_requires_at_least_one_observation(client, pet):
+def test_simple_record_can_preserve_raw_input_without_forcing_duplicate_observation(client, pet):
     payload = complete_payload(pet["id"])
     payload["observations"] = []
 
     response = client.post("/api/v1/episodes/complete", json=payload)
 
-    assert response.status_code == 422
+    assert response.status_code == 201
+    assert response.json()["raw_owner_input"] == payload["raw_owner_input"]
+    assert response.json()["observations"] == []
+    assert [item["source_type"] for item in response.json()["evidence_references"]] == [
+        "RAW_OWNER_INPUT", "OWNER_INTERPRETATION",
+    ]
+
+
+def test_record_rejects_active_plan_from_another_owned_pet(client, pet):
+    other = client.post("/api/v1/pets", json={"name": "Nori", "species": "cat"}).json()
+    plan = client.post(f"/api/v1/pets/{other['id']}/observation-plans", json={"goal": "Observe Nori", "status": "ACTIVE"}).json()
+    payload = complete_payload(pet["id"])
+    payload["plan_id"] = plan["id"]
+
+    response = client.post("/api/v1/episodes/complete", json=payload)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "PLAN_PET_MISMATCH"
+    assert client.get(f"/api/v1/pets/{pet['id']}/timeline").json()["total"] == 0
+
+
+def test_record_rejects_terminal_plan(client, pet):
+    plan = client.post(f"/api/v1/pets/{pet['id']}/observation-plans", json={"goal": "Observe briefly"}).json()
+    assert client.patch(f"/api/v1/observation-plans/{plan['id']}", json={"status": "CANCELLED"}).status_code == 200
+    payload = complete_payload(pet["id"])
+    payload["plan_id"] = plan["id"]
+
+    response = client.post("/api/v1/episodes/complete", json=payload)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "OBSERVATION_PLAN_NOT_ACTIVE"
     assert client.get(f"/api/v1/pets/{pet['id']}/timeline").json()["total"] == 0

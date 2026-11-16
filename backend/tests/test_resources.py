@@ -20,6 +20,16 @@ def test_life_event_create_and_enum_validation(client, pet):
     assert invalid.status_code == 422
     assert invalid.json()["error"]["code"] == "VALIDATION_ERROR"
 
+    updated = client.patch(
+        f"/api/v1/life-events/{created.json()['id']}",
+        json={"event_type": "environment_change", "description": "Moved the resting bed beside the window"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["event_type"] == "environment_change"
+    assert updated.json()["description"] == "Moved the resting bed beside the window"
+    rejected_null = client.patch(f"/api/v1/life-events/{created.json()['id']}", json={"happened_at": None})
+    assert rejected_null.status_code == 422
+
 
 def test_observation_plan_create_update_and_invalid_pet(client, pet):
     created = client.post(

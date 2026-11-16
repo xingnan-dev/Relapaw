@@ -24,7 +24,7 @@ const completedRun: AnalysisRun = {
   prompt_contract_version: "text-understanding/v1", input_contract_version: "understanding-input/v1", output_contract_version: "understanding-output/v1",
   input_snapshot: {}, normalized_output: {}, error_code: null, source_episode_updated_at: episode.updated_at,
   created_at: "2026-10-09T01:36:00Z", completed_at: "2026-10-09T01:36:00Z", is_stale: false,
-  claims: [{ id: 71, analysis_run_id: 61, claim_type: "behavior_hypothesis", statement: "一种可能解释与当时环境有关。", confidence_label: "LOW", status: "PROPOSED", created_at: "2026-10-09T01:36:00Z",
+  claims: [{ id: 71, analysis_run_id: 61, claim_type: "behavior_hypothesis", candidate_kind: "LEGACY_INTERPRETATION", statement: "一种可能解释与当时环境有关。", confidence_label: "LOW", status: "PROPOSED", created_at: "2026-10-09T01:36:00Z",
     evidence_references: [{ id: 81, claim_id: 71, evidence_reference_id: 1, source_type: "RAW_OWNER_INPUT", source_id: null, field_path: "raw_owner_input", observed_at: episode.happened_at, recorded_at: episode.created_at, excerpt: episode.raw_owner_input, role: "SUPPORTS", created_at: "2026-10-09T01:36:00Z" }],
     uncertainties: [{ id: 91, claim_id: 71, kind: "LIMITED_OBSERVATION", description: "只有一次短时观察。", created_at: "2026-10-09T01:36:00Z" }], confirmations: [] }],
 };
@@ -32,6 +32,26 @@ const completedRun: AnalysisRun = {
 beforeEach(() => vi.restoreAllMocks());
 
 describe("text Understanding panel", () => {
+  it("separates verbatim observations from explicit owner interpretations and never offers memory inclusion", async () => {
+    const extractionRun: AnalysisRun = {
+      ...completedRun,
+      id: 63,
+      prompt_contract_version: "text-understanding/v7-verbatim-fact-extraction",
+      output_contract_version: "understanding-output/v2",
+      claims: [
+        { ...completedRun.claims[0], id: 72, candidate_kind: "OBSERVATION", claim_type: "OBSERVATION_CANDIDATE", statement: "小狗在门口站了二十秒。", status: "CONFIRMED", uncertainties: [] },
+        { ...completedRun.claims[0], id: 73, candidate_kind: "OWNER_INTERPRETATION", claim_type: "OWNER_INTERPRETATION_EXTRACT", statement: "我觉得它可能想出去。", uncertainties: [] },
+      ],
+    };
+    vi.stubGlobal("fetch", vi.fn(() => json([extractionRun])));
+    render(<UnderstandingPanel episode={episode} aiAnalysisEnabled />);
+    const run = await screen.findByLabelText("分析 63");
+    expect(within(run).getByText("可观察事实候选")).toBeInTheDocument();
+    expect(within(run).getByText("主人明确表达的理解")).toBeInTheDocument();
+    expect(within(run).getAllByText(/原文逐字摘取/)).toHaveLength(2);
+    expect(within(run).queryByRole("button", { name: "建立长期记忆候选" })).not.toBeInTheDocument();
+  });
+
   it("shows separated inputs, loading, completed contract metadata and saves a decision", async () => {
     let resolveRun!: (value: Awaited<ReturnType<typeof json>>) => void;
     const pending = new Promise<Awaited<ReturnType<typeof json>>>((resolve) => { resolveRun = resolve; });
@@ -42,17 +62,17 @@ describe("text Understanding panel", () => {
       if (url === "/api/v1/claims/71/confirmations") return json({ id: 101, claim_id: 71, decision: "CONFIRMED", note: null, created_at: "2026-10-09T01:37:00Z" }, true, 201);
       return json({}, false, 404);
     });
-    vi.stubGlobal("fetch", fetchMock); render(<UnderstandingPanel episode={episode} />);
-    expect(await screen.findByText("Raw Input")).toBeInTheDocument();
-    expect(screen.getByText("Observation")).toBeInTheDocument(); expect(screen.getByText("Owner Interpretation")).toBeInTheDocument();
+    vi.stubGlobal("fetch", fetchMock); render(<UnderstandingPanel episode={episode} aiAnalysisEnabled />);
+    expect(await screen.findByText("你的原话")).toBeInTheDocument();
+    expect(screen.getByText("用于核对分类的事实字段")).toBeInTheDocument(); expect(screen.getByText("用于核对分类的主人理解")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "开始文本分析" }));
     expect(screen.getByRole("button", { name: "正在分析…" })).toBeDisabled();
     resolveRun(await json(completedRun, true, 201));
-    expect(await screen.findByText("分析完成。请逐条确认或拒绝；确认前均不是事实。")).toBeInTheDocument();
-    const run = screen.getByLabelText("AnalysisRun 61");
-    expect(run).toHaveTextContent("一种可能解释"); expect(run).toHaveTextContent("SUPPORTS"); expect(run).toHaveTextContent("LIMITED_OBSERVATION");
+    expect(await screen.findByText("原文抽取完成。请逐条确认或拒绝；系统没有改写你的记录。")).toBeInTheDocument();
+    const run = screen.getByLabelText("分析 61");
+    expect(run).toHaveTextContent("一种可能解释"); expect(run).toHaveTextContent("支持"); expect(run).toHaveTextContent("只有一次短时观察");
     expect(run).toHaveTextContent("test / contract-fixture / 1"); expect(run).toHaveTextContent("understanding-output/v1");
-    fireEvent.click(within(run).getByRole("button", { name: "确认此 Claim" }));
+    fireEvent.click(within(run).getByRole("button", { name: "确认此候选" }));
     expect(await within(run).findByText("用户已确认；这是用户决定，不会改写原始记录。")).toBeInTheDocument();
     expect(within(run).getByText("模型生成、用户已确认")).toBeInTheDocument();
     expect(within(run).queryByText("模型生成、尚未确认")).not.toBeInTheDocument();
@@ -65,10 +85,10 @@ describe("text Understanding panel", () => {
       if (init?.method === "POST") { posted = true; return json({ error: { code: "MODEL_NOT_CONFIGURED", message: "not configured" } }, false, 503); }
       return json(posted ? [failed] : []);
     }));
-    render(<UnderstandingPanel episode={episode} />); await screen.findByText("尚无 AnalysisRun。");
+    render(<UnderstandingPanel episode={episode} aiAnalysisEnabled />); await screen.findByText("尚无分析历史。");
     fireEvent.click(screen.getByRole("button", { name: "开始文本分析" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("MODEL_NOT_CONFIGURED");
-    expect(await screen.findByLabelText("AnalysisRun 62")).toHaveTextContent("没有可确认的模型结果");
+    expect(await screen.findByLabelText("分析 62")).toHaveTextContent("没有可确认的模型结果");
     expect(screen.queryByText("一种可能解释与当时环境有关。")).not.toBeInTheDocument();
   });
 
@@ -76,7 +96,7 @@ describe("text Understanding panel", () => {
     vi.stubGlobal("fetch", vi.fn((_input: RequestInfo | URL, init?: RequestInit) => init?.method === "POST"
       ? json({ error: { code: "MODEL_OUTPUT_INVALID", message: "invalid" } }, false, 502)
       : json([])));
-    render(<UnderstandingPanel episode={episode} />); await screen.findByText("尚无 AnalysisRun。");
+    render(<UnderstandingPanel episode={episode} aiAnalysisEnabled />); await screen.findByText("尚无分析历史。");
     fireEvent.click(screen.getByRole("button", { name: "开始文本分析" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("未通过契约校验");
     expect(screen.getByRole("button", { name: "重试分析" })).toBeInTheDocument();
@@ -92,11 +112,11 @@ describe("text Understanding panel", () => {
       }
       return json([]);
     }));
-    render(<UnderstandingPanel episode={episode} />); await screen.findByText("尚无 AnalysisRun。");
+    render(<UnderstandingPanel episode={episode} aiAnalysisEnabled />); await screen.findByText("尚无分析历史。");
     fireEvent.click(screen.getByRole("button", { name: "开始文本分析" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("网络请求失败");
     fireEvent.click(screen.getByRole("button", { name: "重试分析" }));
-    expect(await screen.findByText("分析完成。请逐条确认或拒绝；确认前均不是事实。")).toBeInTheDocument();
+    expect(await screen.findByText("原文抽取完成。请逐条确认或拒绝；系统没有改写你的记录。")).toBeInTheDocument();
     expect(JSON.parse(bodies[0]).request_id).toBe(JSON.parse(bodies[1]).request_id);
   });
 
@@ -109,7 +129,7 @@ describe("text Understanding panel", () => {
     vi.stubGlobal("fetch", vi.fn((_input: RequestInfo | URL, init?: RequestInit) => init?.method === "POST"
       ? json({ error: { code, message: "provider detail must not be displayed" } }, false, 503)
       : json([])));
-    render(<UnderstandingPanel episode={episode} />); await screen.findByText("尚无 AnalysisRun。");
+    render(<UnderstandingPanel episode={episode} aiAnalysisEnabled />); await screen.findByText("尚无分析历史。");
     fireEvent.click(screen.getByRole("button", { name: "开始文本分析" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(message);
     expect(screen.getByRole("alert")).not.toHaveTextContent("provider detail");
@@ -117,20 +137,20 @@ describe("text Understanding panel", () => {
 
   it("preserves completed content when a confirmation has a network error", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).includes("confirmations") ? Promise.reject(new TypeError("offline")) : json([completedRun])));
-    render(<UnderstandingPanel episode={episode} />); const run = await screen.findByLabelText("AnalysisRun 61");
-    fireEvent.click(within(run).getByRole("button", { name: "拒绝此 Claim" }));
+    render(<UnderstandingPanel episode={episode} aiAnalysisEnabled />); const run = await screen.findByLabelText("分析 61");
+    fireEvent.click(within(run).getByRole("button", { name: "拒绝此候选" }));
     expect(await within(run).findByRole("alert")).toHaveTextContent("分析结果与既有决定均保留");
     expect(within(run).getByText("一种可能解释与当时环境有关。")).toBeInTheDocument();
-    expect(within(run).getByRole("button", { name: "拒绝此 Claim" })).toBeInTheDocument();
+    expect(within(run).getByRole("button", { name: "拒绝此候选" })).toBeInTheDocument();
   });
 
   it("blocks non-normal safety and displays stale history", async () => {
     const stale = { ...completedRun, is_stale: true };
     vi.stubGlobal("fetch", vi.fn(() => json([stale])));
-    render(<UnderstandingPanel episode={{ ...episode, safety_check: { ...episode.safety_check!, result: "ESCALATE_TO_VET" } }} />);
-    expect(await screen.findByText(/stale · 输入快照已过期/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "开始文本分析" })).toBeDisabled();
-    expect(screen.getByText(/Safety blocked/)).toBeInTheDocument();
+    render(<UnderstandingPanel episode={{ ...episode, safety_check: { ...episode.safety_check!, result: "ESCALATE_TO_VET" } }} aiAnalysisEnabled />);
+    expect(await screen.findByText(/来源已变化 · 结果可能过期/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "开始文本分析" })).not.toBeInTheDocument();
+    expect(screen.getByText(/已因安全状态阻断/)).toBeInTheDocument();
   });
 
   it("materializes a confirmed claim as a candidate without auto-including it", async () => {
@@ -140,8 +160,8 @@ describe("text Understanding panel", () => {
       if (url.endsWith("/memory-candidate") && init?.method === "POST") return json({ id: 4 }, true, 201);
       return json([confirmed]);
     }));
-    render(<UnderstandingPanel episode={episode} />);
-    const run = await screen.findByLabelText("AnalysisRun 61");
+    render(<UnderstandingPanel episode={episode} aiAnalysisEnabled />);
+    const run = await screen.findByLabelText("分析 61");
     fireEvent.click(within(run).getByRole("button", { name: "建立长期记忆候选" }));
     expect(await within(run).findByText(/候选已建立，尚未纳入长期记忆/)).toBeInTheDocument();
   });
@@ -149,11 +169,27 @@ describe("text Understanding panel", () => {
   it("preserves a confirmed claim when candidate creation fails", async () => {
     const confirmed = { ...completedRun, claims: [{ ...completedRun.claims[0], status: "CONFIRMED" as const }] };
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input).endsWith("/memory-candidate") && init?.method === "POST" ? Promise.reject(new TypeError("offline")) : json([confirmed])));
-    render(<UnderstandingPanel episode={episode} />);
-    const run = await screen.findByLabelText("AnalysisRun 61");
+    render(<UnderstandingPanel episode={episode} aiAnalysisEnabled />);
+    const run = await screen.findByLabelText("分析 61");
     fireEvent.click(within(run).getByRole("button", { name: "建立长期记忆候选" }));
-    expect(await within(run).findByRole("alert")).toHaveTextContent("Claim 与用户确认状态均已保留");
+    expect(await within(run).findByRole("alert")).toHaveTextContent("候选理解与用户确认状态均已保留");
     expect(within(run).getByText("一种可能解释与当时环境有关。")).toBeInTheDocument();
     expect(within(run).getByRole("button", { name: "建立长期记忆候选" })).toBeInTheDocument();
+  });
+
+  it("keeps recorded history readable while runtime AI is disabled", async () => {
+    const fetchMock = vi.fn(() => json([completedRun]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<UnderstandingPanel episode={episode} aiAnalysisEnabled={false} />);
+
+    expect(await screen.findByLabelText("分析 61")).toHaveTextContent("一种可能解释");
+    expect(screen.getByText(/当前未启用运行时 AI/)).toBeInTheDocument();
+    expect(screen.getByText(/模型尚未通过资格评估/)).toBeInTheDocument();
+    expect(screen.getByText(/不接受新的候选决定或长期记忆候选/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "开始文本分析" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "确认此候选" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "拒绝此候选" })).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ method: "POST" }));
   });
 });

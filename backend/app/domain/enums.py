@@ -30,6 +30,27 @@ class ObservationSourceType(StringEnum):
     MANUAL_IMPORT = "manual_import"
 
 
+class BehaviorCategory(StringEnum):
+    ACTIVITY = "ACTIVITY"
+    FEEDING = "FEEDING"
+    RESTING = "RESTING"
+    SOCIAL = "SOCIAL"
+    ELIMINATION = "ELIMINATION"
+    VOCALIZATION = "VOCALIZATION"
+    GROOMING = "GROOMING"
+    MOBILITY = "MOBILITY"
+    OTHER = "OTHER"
+
+
+class MeasurementUnit(StringEnum):
+    SECONDS = "seconds"
+    MINUTES = "minutes"
+    COUNT = "count"
+    METERS = "meters"
+    GRAMS = "grams"
+    MILLILITERS = "milliliters"
+
+
 class DangerSignal(StringEnum):
     BREATHING_DIFFICULTY = "breathing_difficulty"
     PROLONGED_SEIZURE = "prolonged_seizure"
@@ -61,6 +82,7 @@ class FollowUpOutcome(StringEnum):
 
 
 class AnalysisRunStatus(StringEnum):
+    RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     BLOCKED_BY_SAFETY = "BLOCKED_BY_SAFETY"

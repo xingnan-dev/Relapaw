@@ -2,11 +2,13 @@ export interface Observation {
   id: number;
   episode_id: number;
   behavior_type: string;
+  standardized_category?: BehaviorCategory | null;
   description: string;
   source_type: string;
   confidence: number | null;
   measured_value: number | null;
   unit: string | null;
+  standardized_unit?: MeasurementUnit | null;
   created_at: string;
   updated_at: string;
 }
@@ -20,6 +22,8 @@ export interface OwnerInterpretation {
 }
 
 export type SafetyStatus = "NORMAL" | "NEED_MORE_INFO" | "ESCALATE_TO_VET";
+export type BehaviorCategory = "ACTIVITY" | "FEEDING" | "RESTING" | "SOCIAL" | "ELIMINATION" | "VOCALIZATION" | "GROOMING" | "MOBILITY" | "OTHER";
+export type MeasurementUnit = "seconds" | "minutes" | "count" | "meters" | "grams" | "milliliters";
 export type DangerSignal = "breathing_difficulty" | "prolonged_seizure" | "collapse_or_unable_to_stand" | "severe_bleeding" | "suspected_poisoning" | "other_urgent_concern";
 export type FollowUpStatus = "PENDING" | "COMPLETED" | "CANCELLED";
 export type FollowUpOutcome = "PERSISTING" | "IMPROVED" | "WORSENED" | "RESOLVED" | "NEW_SIGNS";
@@ -87,6 +91,17 @@ export interface Episode {
   veterinary_escalations: VeterinaryEscalation[];
   scheduled_follow_ups: FollowUp[];
   result_of_follow_up: FollowUp | null;
+  revisions?: EpisodeRevision[];
+}
+
+export interface EpisodeRevision {
+  id: number;
+  episode_id: number;
+  revision_number: number;
+  source: "CREATED" | "MIGRATED_BASELINE" | "LEGACY_BASELINE" | "OWNER_EDIT" | "OBSERVATION_ADDED" | "INTERPRETATION_ADDED";
+  change_summary: string | null;
+  snapshot: Record<string, unknown>;
+  created_at: string;
 }
 
 export interface EpisodeUpdate {
@@ -101,9 +116,10 @@ export interface EpisodeUpdate {
   trigger_context: string | null;
   observations: Array<Omit<Observation, "id" | "episode_id" | "created_at" | "updated_at">>;
   owner_interpretations: Array<{ interpretation: string }>;
+  change_summary?: string;
 }
 
-export interface TimelineFilters { from?: string; to?: string; episode_type?: string; plan_id?: number; }
+export interface TimelineFilters { from?: string; to?: string; episode_type?: string; plan_id?: number; q?: string; category?: BehaviorCategory; }
 
 export interface CompleteEpisodeCreate {
   pet_id: number;
@@ -116,7 +132,7 @@ export interface CompleteEpisodeCreate {
   location?: string;
   trigger_context?: string;
   plan_id?: number;
-  observations: Array<{ behavior_type: string; description: string; source_type: "owner_direct" }>;
+  observations: Array<{ behavior_type: string; standardized_category?: BehaviorCategory; description: string; source_type: "owner_direct"; measured_value?: number; unit?: string; standardized_unit?: MeasurementUnit }>;
   owner_interpretations: Array<{ interpretation: string }>;
   safety_check: {
     result: SafetyStatus;
@@ -153,7 +169,16 @@ export interface Pet {
   approximate_age: string | null;
   sex: string | null;
   neutered: boolean | null;
+  weight_kg?: number | null;
+  known_conditions?: string[] | null;
+  medications?: string[] | null;
+  allergies?: string[] | null;
+  living_environment?: string | null;
+  veterinarian_confirmed_facts?: Array<Record<string, string>> | null;
+  owner_observations?: Record<string, string> | null;
+  avatar?: PetAvatar | null;
   created_at: string;
+  archived_at?: string | null;
 }
 
 export interface PetCreate {
@@ -164,9 +189,40 @@ export interface PetCreate {
   approximate_age?: string;
   sex?: string;
   neutered?: boolean;
+  weight_kg?: number;
+  known_conditions?: string[];
+  medications?: string[];
+  allergies?: string[];
+  living_environment?: string;
+  veterinarian_confirmed_facts?: Array<Record<string, string>>;
+  owner_observations?: Record<string, string>;
 }
 
-export type AnalysisRunStatus = "COMPLETED" | "FAILED" | "BLOCKED_BY_SAFETY";
+export interface PetAvatar { id: number; pet_id: number; original_filename: string; media_type: string; byte_size: number; sha256: string; created_at: string; updated_at: string; }
+
+export interface CaregiverProfile {
+  id?: number;
+  living_together_since: string | null;
+  primary_caregiver: string | null;
+  household_members: string[] | null;
+  daily_routine: string | null;
+  pet_alone_hours: number | null;
+  pet_care_experience: string | null;
+  current_concerns: string | null;
+  explanation_preference: string | null;
+  reminder_preference: string | null;
+  recording_capacity: string | null;
+  household_context: Record<string, boolean> | null;
+  caregiving_constraints: string | null;
+  interaction_preference: string | null;
+  observation_preference: string | null;
+  response_preference: string | null;
+  ai_context_enabled: boolean;
+  ai_context_fields: string[] | null;
+  ai_context_consent_updated_at?: string | null;
+}
+
+export type AnalysisRunStatus = "RUNNING" | "COMPLETED" | "FAILED" | "BLOCKED_BY_SAFETY";
 export type ClaimStatus = "PROPOSED" | "CONFIRMED" | "REJECTED";
 export type ClaimConfidence = "LOW" | "MEDIUM" | "HIGH";
 export type ConfirmationDecision = "CONFIRMED" | "REJECTED";
@@ -205,6 +261,7 @@ export interface AnalysisClaim {
   id: number;
   analysis_run_id: number;
   claim_type: string;
+  candidate_kind: "LEGACY_INTERPRETATION" | "OBSERVATION" | "OWNER_INTERPRETATION";
   statement: string;
   confidence_label: ClaimConfidence;
   status: ClaimStatus;
@@ -247,8 +304,43 @@ export interface PetBaseline {
   hiding_pattern: Record<string, unknown> | null;
 }
 
+export type LifeEventType = "moving" | "new_pet" | "owner_absence" | "visitor" | "surgery" | "diet_change" | "environment_change" | "other";
+
+export interface LifeEvent {
+  id: number;
+  pet_id: number;
+  event_type: LifeEventType;
+  happened_at: string;
+  description: string | null;
+}
+
+export type RelationshipKind = "OWNER_PET" | "PET_PET";
+export type RelationshipObservationType = "OWNER_INTERACTION" | "SHARED_REST" | "INTERACTION" | "AVOIDANCE" | "CONFLICT" | "RESOURCE_SHARING" | "OTHER";
+export interface RelationshipEvent {
+  id: number; owner_user_id: string; relationship_kind: RelationshipKind; happened_at: string;
+  observation_type: RelationshipObservationType; observation_text: string; source_episode_id: number | null;
+  created_at: string; updated_at: string; current_owner_interpretation: string | null;
+  participants: Array<{ id: number; pet_id: number }>;
+  interpretations: Array<{ id: number; interpretation: string; created_at: string }>;
+  revisions: Array<{ id: number; revision_number: number; relationship_kind: RelationshipKind; happened_at: string; participant_pet_ids: number[]; observation_type: string; observation_text: string; owner_interpretation: string | null; source_episode_id: number | null; created_at: string }>;
+}
+
+export type InteractionPatternStatus = "ELIGIBLE" | "CONFIRMED" | "REJECTED" | "WITHDRAWN";
+export type InteractionPatternMemoryStatus = "NOT_INCLUDED" | "INCLUDED" | "WITHDRAWN";
+export type InteractionPatternDecisionAction = "CONFIRM" | "REJECT" | "WITHDRAW" | "INCLUDE_IN_MEMORY" | "WITHDRAW_FROM_MEMORY";
+export interface InteractionPatternCandidate {
+  id: number; relationship_kind: RelationshipKind; participant_pet_ids: number[]; initial_self_report: string | null;
+  title: string; observable_pattern: string; counterevidence_summary: string; evidence_count: number;
+  coverage_start: string; coverage_end: string; generator_version: string; confidence_limit: string;
+  status: InteractionPatternStatus; memory_status: InteractionPatternMemoryStatus; created_at: string; updated_at: string;
+  evidences: Array<{ id: number; relationship_event_id: number | null; role: "SUPPORTS" | "CONTRADICTS"; observation_type: string; observation_snapshot: string; happened_at: string }>;
+  revisions: Array<{ id: number; revision_number: number; title: string; observable_pattern: string; counterevidence_summary: string; confidence_limit: string; change_summary: string | null; created_at: string }>;
+  decisions: Array<{ id: number; action: InteractionPatternDecisionAction; previous_status: string; resulting_status: string; previous_memory_status: string; resulting_memory_status: string; note: string | null; created_at: string }>;
+}
+
 export type MemoryCandidateState = "ELIGIBLE" | "ACTIVE" | "WITHDRAWN" | "STALE";
 export type MemoryDecisionType = "INCLUDE" | "WITHDRAW";
+export type ManualMemoryCategory = "ROUTINE" | "PREFERENCE" | "TRIGGER" | "COMFORT" | "HEALTH_CONTEXT" | "OTHER";
 
 export interface MemoryDecision {
   id: number;
@@ -259,19 +351,31 @@ export interface MemoryDecision {
   created_at: string;
 }
 
+export interface MemoryRevision {
+  id: number;
+  candidate_id: number;
+  revision_number: number;
+  category: ManualMemoryCategory;
+  statement: string;
+  created_at: string;
+}
+
 export interface MemoryCandidate {
   id: number;
   pet_id: number;
-  claim_id: number;
-  claim_snapshot: { claim_type: string; statement: string; confidence_label: ClaimConfidence };
+  claim_id: number | null;
+  source_type: "CLAIM" | "MANUAL";
+  claim_snapshot: { claim_type: string; statement: string; confidence_label: ClaimConfidence | "USER_STATED" };
   evidence_snapshot: Array<Record<string, unknown>>;
   uncertainty_snapshot: Array<Record<string, unknown>>;
   model_snapshot: Record<string, unknown>;
-  source_episode_updated_at: string;
+  source_episode_updated_at: string | null;
   created_at: string;
   is_stale: boolean;
   state: MemoryCandidateState;
   decisions: MemoryDecision[];
+  revisions?: MemoryRevision[];
+  media_references: Array<{ id: number; media_attachment_id: number; created_at: string; attachment: MediaAttachment }>;
 }
 
 export type BaselineWindow = "7d" | "30d" | "90d" | "all";
@@ -289,7 +393,7 @@ export interface BaselineMetric {
   median?: number;
   observation_days?: number;
   status: string;
-  trend?: Record<string, unknown> | null;
+  trend?: { direction: "INCREASED" | "DECREASED" | "STABLE"; current_median?: number; comparison_median?: number; current_count?: number; comparison_count: number; threshold: number } | null;
 }
 
 export interface BaselineEvidence {
@@ -323,4 +427,51 @@ export interface BaselineSnapshot {
   created_at: string;
   is_stale: boolean;
   evidences: BaselineEvidence[];
+}
+
+export interface Capabilities {
+  environment: string;
+  synthetic_data: boolean;
+  dataset_version: string | null;
+  ai_analysis_enabled: boolean;
+  model_qualification: "NOT_QUALIFIED" | "QUALIFIED";
+  model_qualification_id: string | null;
+  medical_knowledge_version: string;
+  medical_review_status: "PENDING" | "APPROVED";
+}
+
+export interface KnowledgeEntry {
+  id: string; version: string; species: string[]; title: string; summary: string; topics: string[];
+  published_at: string; review_status: "DRAFT" | "APPROVED" | "WITHDRAWN";
+  reviewed_at: string | null; withdrawn_at: string | null; scope: "recording_method_only";
+  source: { title: string; version: string; locator: string; url: string | null };
+}
+export interface EducationalGuidance {
+  status: "EDUCATIONAL_ONLY"; knowledge_version: string; review_status: string; review_note: string;
+  fact_summary: string[]; entries: KnowledgeEntry[]; limitations: string[];
+}
+export type GuidanceMode = "RECORD_REVIEW" | "RECENT_CHANGE_COMPARISON" | "VET_TIMELINE";
+export interface AssistantGuidanceOutput {
+  contract_version: "assistant-guidance-output/v4";
+  records_show: string[]; owner_interpretation: string[]; possibly_relevant_background: string[];
+  cannot_determine: string[]; continue_observing: string[]; contact_vet_when: string[];
+  sources_used: Array<{ citation_id: string; knowledge_id: string; knowledge_version: string; supports_section: "possibly_relevant_background" | "continue_observing" | "contact_vet_when"; item_index: number }>;
+  record_sources: Array<{ section: "records_show" | "owner_interpretation"; item_index: number; episode_ids: number[] }>;
+}
+export interface AssistantGuidanceRun {
+  id: number; episode_id: number; request_id: string; mode: GuidanceMode; status: AnalysisRunStatus;
+  adapter_name: string; model_provider: string; model_name: string; model_version: string;
+  prompt_contract_version: string; input_contract_version: string; output_contract_version: string;
+  input_snapshot: Record<string, unknown>; knowledge_snapshot: { set_version: string; selected_at: string; entries: KnowledgeEntry[] };
+  normalized_output: AssistantGuidanceOutput | null; error_code: string | null;
+  source_episode_updated_at: string; created_at: string; completed_at: string | null; is_stale: boolean;
+}
+export interface MediaAttachment {
+  id: number; pet_id: number; episode_id: number | null; life_event_id: number | null; relationship_event_id: number | null;
+  original_filename: string; media_type: string; byte_size: number; sha256: string;
+  status: "AVAILABLE" | "MISSING" | "CORRUPT"; observable_facts: string | null;
+  captured_at: string | null; owner_caption: string | null; duration_seconds: number | null;
+  ai_candidate_observation: string | null; ai_candidate_status: "NONE" | "PENDING" | "CONFIRMED" | "REJECTED" | "WITHDRAWN";
+  created_at: string; updated_at: string;
+  revisions: Array<{ id: number; revision_number: number; captured_at: string | null; owner_caption: string | null; ai_candidate_observation: string | null; ai_candidate_status: string; change_summary: string | null; created_at: string }>;
 }

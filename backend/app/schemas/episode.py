@@ -3,18 +3,33 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.domain.enums import DangerSignal, EvidenceSourceType, ObservationSourceType, SafetyStatus, VeterinaryEscalationStatus
+from app.domain.enums import BehaviorCategory, DangerSignal, EvidenceSourceType, MeasurementUnit, ObservationSourceType, SafetyStatus, VeterinaryEscalationStatus
 from app.schemas.common import ORMModel
 from app.schemas.time import require_aware_utc
 
 
 class ObservationCreate(BaseModel):
     behavior_type: str = Field(min_length=1, max_length=100)
+    standardized_category: BehaviorCategory | None = None
     description: str = Field(min_length=1)
     source_type: ObservationSourceType
     confidence: float | None = Field(default=None, ge=0, le=1)
-    measured_value: float | None = None
+    measured_value: float | None = Field(default=None, ge=0)
     unit: str | None = Field(default=None, max_length=50)
+    standardized_unit: MeasurementUnit | None = None
+
+    @model_validator(mode="after")
+    def standardized_measurement_is_complete(self):
+        if self.standardized_unit is not None:
+            if self.measured_value is None:
+                raise ValueError("standardized_unit requires measured_value")
+            if self.unit is None or not self.unit.strip():
+                raise ValueError("standardized_unit requires unit")
+            if self.unit.strip().casefold() != self.standardized_unit.value:
+                raise ValueError(
+                    "standardized_unit must match unit unless measured_value is converted before submission"
+                )
+        return self
 
 
 class ObservationRead(ObservationCreate, ORMModel):
@@ -128,7 +143,7 @@ class EpisodePlanLinkRead(ORMModel):
 
 
 class CompleteEpisodeCreate(EpisodeCreate):
-    observations: list[ObservationCreate] = Field(min_length=1)
+    observations: list[ObservationCreate] = Field(default_factory=list)
     owner_interpretations: list[OwnerInterpretationCreate] = Field(default_factory=list)
     safety_check: SafetyCheckCreate
     plan_id: int | None = None
@@ -146,8 +161,9 @@ class EpisodeUpdate(BaseModel):
     intensity: int | None = Field(default=None, ge=1, le=5)
     location: str | None = Field(default=None, max_length=200)
     trigger_context: str | None = None
-    observations: list[ObservationCreate] = Field(min_length=1)
+    observations: list[ObservationCreate] = Field(default_factory=list)
     owner_interpretations: list[OwnerInterpretationCreate] = Field(default_factory=list)
+    change_summary: str | None = Field(default=None, max_length=500)
 
     @field_validator("happened_at")
     @classmethod
@@ -181,6 +197,21 @@ class FollowUpLinkRead(ORMModel):
         return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
 
+class EpisodeRevisionRead(ORMModel):
+    id: int
+    episode_id: int
+    revision_number: int
+    source: str
+    change_summary: str | None = None
+    snapshot: dict[str, Any]
+    created_at: datetime
+
+    @field_validator("created_at")
+    @classmethod
+    def database_datetime_is_utc(cls, value: datetime) -> datetime:
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
 class EpisodeRead(ORMModel):
     id: int
     pet_id: int
@@ -203,6 +234,7 @@ class EpisodeRead(ORMModel):
     veterinary_escalations: list[VeterinaryEscalationRead] = Field(default_factory=list)
     scheduled_follow_ups: list[FollowUpLinkRead] = Field(default_factory=list)
     result_of_follow_up: FollowUpLinkRead | None = None
+    revisions: list["EpisodeRevisionRead"] = Field(default_factory=list)
 
     @field_validator("happened_at", "created_at", "updated_at")
     @classmethod

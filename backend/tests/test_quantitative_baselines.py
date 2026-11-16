@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
 
 import pytest
+from pydantic import ValidationError
 
+from app.schemas.episode import ObservationCreate
 from app.services.baseline import (
     ALGORITHM_VERSION,
     EpisodeSource,
@@ -47,6 +49,70 @@ def source(
         intensity=intensity,
         observations=observations,
     )
+
+
+def test_standardized_category_and_unit_enable_comparison_without_replacing_raw_category():
+    sources = [
+        EpisodeSource(
+            id=index,
+            happened_at=dt(10 + index),
+            updated_at=dt(10 + index),
+            episode_type="owner_wording",
+            duration_seconds=None,
+            frequency_count=None,
+            intensity=None,
+            observations=(ObservationValue(
+                id=index,
+                behavior_type=f"raw-owner-label-{index}",
+                measured_value=float(index * 10),
+                unit="seconds",
+                updated_at=dt(10 + index),
+                standardized_category="RESTING",
+                standardized_unit="seconds",
+            ),),
+        )
+        for index in (1, 2, 3)
+    ]
+    calculation = calculate_baseline("all", dt(20), sources)
+    metric = next(item for item in calculation.metrics if item["field"] == "measured_value")
+    assert metric["behavior_type"] == "RESTING"
+    assert metric["unit"] == "seconds"
+    assert metric["median"] == 20.0
+    assert [item.observations[0].behavior_type for item in sources] == [
+        "raw-owner-label-1", "raw-owner-label-2", "raw-owner-label-3"
+    ]
+    assert [item.observations[0].unit for item in sources] == ["seconds"] * 3
+
+
+def test_standardized_unit_requires_an_identical_raw_unit_and_unconverted_value():
+    valid = ObservationCreate(
+        behavior_type="resting",
+        description="Rested for thirty seconds",
+        source_type="owner_direct",
+        measured_value=30,
+        unit=" seconds ",
+        standardized_unit="seconds",
+    )
+    assert valid.standardized_unit.value == "seconds"
+
+    with pytest.raises(ValidationError, match="standardized_unit requires unit"):
+        ObservationCreate(
+            behavior_type="resting",
+            description="Rested for thirty seconds",
+            source_type="owner_direct",
+            measured_value=30,
+            standardized_unit="seconds",
+        )
+
+    with pytest.raises(ValidationError, match="standardized_unit must match unit"):
+        ObservationCreate(
+            behavior_type="resting",
+            description="Rested for one minute",
+            source_type="owner_direct",
+            measured_value=1,
+            unit="minutes",
+            standardized_unit="seconds",
+        )
 
 
 def metric(result, key):

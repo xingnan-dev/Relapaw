@@ -34,6 +34,24 @@ def test_plan_state_transitions_and_terminal_guard(client, pet):
     assert terminal.json()["error"]["code"] == "OBSERVATION_PLAN_TERMINAL"
 
 
+def test_active_plan_goal_and_multiple_items_can_be_edited(client, pet):
+    plan = create_plan(client, pet["id"]).json()
+    response = client.patch(f"/api/v1/observation-plans/{plan['id']}", json={
+        "goal": "Compare doorway and window pauses",
+        "items": [
+            {"label": "Doorway duration", "is_required": True},
+            {"label": "Window duration", "description": "Record seconds", "is_required": True},
+            {"label": "Direction after pause", "is_required": False},
+        ],
+    })
+    assert response.status_code == 200, response.text
+    assert response.json()["goal"] == "Compare doorway and window pauses"
+    assert [item["label"] for item in response.json()["items"]] == ["Doorway duration", "Window duration", "Direction after pause"]
+    rejected = client.patch(f"/api/v1/observation-plans/{plan['id']}", json={"items": []})
+    assert rejected.status_code == 422
+    assert client.get(f"/api/v1/observation-plans/{plan['id']}").json()["items"]
+
+
 def test_plan_pet_isolation_and_episode_link(client, pet):
     other = client.post("/api/v1/pets", json={"name": "Other", "species": "cat"}).json()
     plan = create_plan(client, pet["id"]).json()

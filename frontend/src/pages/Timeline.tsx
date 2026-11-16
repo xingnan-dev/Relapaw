@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNo
 import { deleteEpisode, getEpisode, getTimeline, scheduleFollowUp, updateEpisode, updateVeterinaryEscalation } from "../api";
 import { useCurrentPet } from "../state/CurrentPetContext";
 import { UnderstandingPanel } from "../components/UnderstandingPanel";
-import type { Episode, EpisodeUpdate, TimelineFilters, VeterinaryEscalation } from "../types";
+import { EducationalGuidancePanel } from "../components/EducationalGuidancePanel";
+import { AssistantGuidancePanel } from "../components/AssistantGuidancePanel";
+import { MediaPanel } from "../components/MediaPanel";
+import { useCapabilities } from "../state/CapabilitiesContext";
+import type { BehaviorCategory, Episode, EpisodeUpdate, TimelineFilters, VeterinaryEscalation } from "../types";
 import { PetBotanicalSketch } from "../components/brand";
 
 type Range = "all" | "30" | "7" | "today";
@@ -25,12 +29,17 @@ function episodeTypeLabel(value: string) {
   return episodeTypeLabels[value] || "其他记录";
 }
 
+const revisionSourceLabels: Record<string, string> = {
+  CREATED: "创建记录", MIGRATED_BASELINE: "保留已有记录", LEGACY_BASELINE: "编辑前存档",
+  OWNER_EDIT: "主人编辑", OBSERVATION_ADDED: "补充事实", INTERPRETATION_ADDED: "补充理解",
+};
+
 function rangeFilters(range: Range): TimelineFilters {
   if (range === "all") return {};
   const now = new Date();
   if (range === "today") {
     const start = new Date(now); start.setHours(0, 0, 0, 0);
-    const end = new Date(now); end.setHours(23, 59, 59, 999);
+    const end = new Date(start); end.setDate(end.getDate() + 1);
     return { from: start.toISOString(), to: end.toISOString() };
   }
   return { from: new Date(now.getTime() - Number(range) * 86400000).toISOString(), to: now.toISOString() };
@@ -42,6 +51,7 @@ function localDateTime(value: string) {
 }
 
 export function Timeline({ initialEpisodeId = null, onInitialEpisodeOpened = () => undefined, onOpenMemory = () => undefined }: { initialEpisodeId?: number | null; onInitialEpisodeOpened?: () => void; onOpenMemory?: () => void }) {
+  const { capabilities } = useCapabilities();
   const { pet, status } = useCurrentPet();
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [page, setPage] = useState(1);
@@ -50,11 +60,22 @@ export function Timeline({ initialEpisodeId = null, onInitialEpisodeOpened = () 
   const [loadingMore, setLoadingMore] = useState(false);
   const [range, setRange] = useState<Range>("all");
   const [episodeType, setEpisodeType] = useState("");
+  const [category, setCategory] = useState<BehaviorCategory | "">("");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [selected, setSelected] = useState<Episode | null>(null);
   const [detailState, setDetailState] = useState<"idle" | "loading" | "error">("idle");
   const [mode, setMode] = useState<"list" | "detail" | "edit" | "delete" | "schedule">("list");
   const [actionError, setActionError] = useState("");
-  const filters = useMemo(() => ({ ...rangeFilters(range), ...(episodeType ? { episode_type: episodeType } : {}) }), [range, episodeType]);
+  const filters = useMemo(() => {
+    const dates = fromDate || toDate ? {
+      ...(fromDate ? { from: new Date(`${fromDate}T00:00:00`).toISOString() } : {}),
+      ...(toDate ? (() => { const end = new Date(`${toDate}T00:00:00`); end.setDate(end.getDate() + 1); return { to: end.toISOString() }; })() : {}),
+    } : rangeFilters(range);
+    return { ...dates, ...(episodeType ? { episode_type: episodeType } : {}), ...(category ? { category } : {}), ...(searchQuery ? { q: searchQuery } : {}) };
+  }, [range, episodeType, category, searchQuery, fromDate, toDate]);
 
   const load = useCallback(async () => {
     if (!pet) { setEpisodes([]); setListState("ready"); return; }
@@ -85,9 +106,10 @@ export function Timeline({ initialEpisodeId = null, onInitialEpisodeOpened = () 
     finally { setLoadingMore(false); }
   }
 
-  if (!pet) return <section className="timeline-page" aria-labelledby="timeline-title"><p className="eyebrow">TIMELINE</p><h2 id="timeline-title">长期记录</h2><p role="status">{status === "loading" ? "正在读取…" : "添加宠物后，Timeline 会出现在这里。"}</p></section>;
+  if (!pet) return <section className="timeline-page" aria-labelledby="timeline-title"><p className="eyebrow">TIMELINE</p><h2 id="timeline-title">足迹</h2><p role="status">{status === "loading" ? "正在读取…" : "添加宠物后，足迹会出现在这里。"}</p></section>;
 
   if (mode !== "list") return <EpisodePanel episode={selected} state={detailState} mode={mode} error={actionError}
+    aiAnalysisEnabled={capabilities.ai_analysis_enabled}
     onBack={() => { setMode("list"); setActionError(""); }}
     onRetry={() => selected ? void openDetail(selected.id) : undefined}
     onEdit={() => setMode("edit")} onDelete={() => setMode("delete")} onSchedule={() => setMode("schedule")} onOpenRelated={(episodeId) => void openDetail(episodeId)}
@@ -96,11 +118,20 @@ export function Timeline({ initialEpisodeId = null, onInitialEpisodeOpened = () 
     onOpenMemory={onOpenMemory} onError={setActionError} onDeleted={() => { setSelected(null); setMode("list"); void load(); }} />;
 
   return <section className="timeline-page" aria-labelledby="timeline-title">
-    <header className="timeline-hero"><div><p className="eyebrow">TIMELINE · 一起走过的日子</p><h2 id="timeline-title">长期记录</h2><p>每一条都保留原话、时间和来源，慢慢连成它真实的生活轨迹。</p><span className="pet-handnote">过几天再回来看看</span></div><PetBotanicalSketch scene="timeline" /><div className="timeline-count"><strong>{episodes.length}</strong><span>条记录</span></div></header>
-    <div className="timeline-filters"><label>记录类型筛选<select value={episodeType} onChange={(event) => setEpisodeType(event.target.value)}><option value="">全部类型</option>{Object.entries(episodeTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-    <div className="filter-chips" aria-label="时间范围">{ranges.map(([value, label]) => <button key={value} className={range === value ? "active" : ""} aria-pressed={range === value} onClick={() => setRange(value)}>{label}</button>)}</div></div>
+    <header className="timeline-hero"><div><p className="eyebrow">TIMELINE · 一起走过的日子</p><h2 id="timeline-title">足迹</h2><p>按时间回看真实记录，需要时再展开来源和修改历史。</p><span className="pet-handnote">过几天再回来看看</span></div><PetBotanicalSketch scene="timeline" /><div className="timeline-count"><strong>{episodes.length}</strong><span>条记录</span></div></header>
+    <section className="timeline-controls" aria-labelledby="timeline-find-title">
+      <div className="timeline-controls__heading"><div><p className="eyebrow">FIND A MOMENT</p><h3 id="timeline-find-title">找一条记录</h3></div>{(searchQuery || episodeType || category || fromDate || toDate || range !== "all") && <button type="button" className="text-button" onClick={() => { setSearchInput(""); setSearchQuery(""); setEpisodeType(""); setCategory(""); setFromDate(""); setToDate(""); setRange("all"); }}>清除全部筛选</button>}</div>
+      <form className="timeline-search" role="search" onSubmit={(event) => { event.preventDefault(); setSearchQuery(searchInput.trim()); }}><label className="sr-only" htmlFor="timeline-search-input">搜索记录</label><input id="timeline-search-input" aria-label="搜索 Timeline" value={searchInput} maxLength={200} placeholder="输入当时写过的词，例如“门口”" onChange={(event) => setSearchInput(event.target.value)} /><button type="submit">搜索</button></form>
+      <div className="filter-chips timeline-range" aria-label="时间范围">{ranges.map(([value, label]) => <button type="button" key={value} className={!fromDate && !toDate && range === value ? "active" : ""} aria-pressed={!fromDate && !toDate && range === value} onClick={() => { setFromDate(""); setToDate(""); setRange(value); }}>{label}</button>)}</div>
+      <details className="timeline-advanced-filters"><summary>按类型或日期进一步筛选</summary><div className="timeline-filter-grid">
+        <label>记录类型<select value={episodeType} onChange={(event) => setEpisodeType(event.target.value)}><option value="">全部类型</option>{Object.entries(episodeTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label>观察方面<select aria-label="行为标签" value={category} onChange={(event) => setCategory(event.target.value as BehaviorCategory | "")}><option value="">全部方面</option><option value="ACTIVITY">活动</option><option value="FEEDING">饮食</option><option value="RESTING">休息</option><option value="SOCIAL">社交</option><option value="ELIMINATION">排泄</option><option value="VOCALIZATION">发声</option><option value="GROOMING">梳理</option><option value="MOBILITY">行动能力</option><option value="OTHER">其他</option></select></label>
+        <label>从哪天开始<input aria-label="Timeline 开始日期" type="date" value={fromDate} max={toDate || undefined} onChange={(event) => setFromDate(event.target.value)} /></label><label>到哪天结束<input aria-label="Timeline 结束日期" type="date" value={toDate} min={fromDate || undefined} onChange={(event) => setToDate(event.target.value)} /></label>
+      </div></details>
+    </section>
+    <div className="timeline-results-heading"><h3>记录</h3><span>{listState === "ready" ? `${episodes.length} 条` : "正在整理"}</span></div>
     {listState === "loading" && <p role="status">正在读取…</p>}
-    {listState === "error" && <div role="alert"><p>暂时无法读取 Timeline。</p><button onClick={() => void load()}>重试</button></div>}
+    {listState === "error" && <div role="alert"><p>暂时无法读取足迹。</p><button onClick={() => void load()}>重试</button></div>}
     {listState === "ready" && episodes.length === 0 && <p role="status">当前筛选下还没有事件记录。</p>}
     {actionError && <p role="alert" className="form-error">{actionError}</p>}
     <ol className="timeline">{episodes.map((episode) => <li key={episode.id}><button className="timeline-summary" onClick={() => void openDetail(episode.id)}><span><time dateTime={episode.happened_at}>{new Date(episode.happened_at).toLocaleString()}</time><strong>{episodeTypeLabel(episode.episode_type)}</strong><span className="sr-only">{episode.episode_type}</span></span><span>打开记录 <span aria-hidden="true">→</span></span></button><p>{episode.raw_owner_input}</p></li>)}</ol>
@@ -108,29 +139,32 @@ export function Timeline({ initialEpisodeId = null, onInitialEpisodeOpened = () 
   </section>;
 }
 
-type PanelProps = { episode: Episode | null; state: "idle" | "loading" | "error"; mode: "detail" | "edit" | "delete" | "schedule"; error: string; onBack: () => void; onRetry: () => void; onEdit: () => void; onDelete: () => void; onSchedule: () => void; onOpenRelated: (episodeId: number) => void; onOpenMemory: () => void; onSaved: (episode: Episode) => void; onDeleted: () => void; onError: (value: string) => void; onEscalationChanged: (updated: VeterinaryEscalation) => void };
+type PanelProps = { episode: Episode | null; state: "idle" | "loading" | "error"; mode: "detail" | "edit" | "delete" | "schedule"; error: string; aiAnalysisEnabled: boolean; onBack: () => void; onRetry: () => void; onEdit: () => void; onDelete: () => void; onSchedule: () => void; onOpenRelated: (episodeId: number) => void; onOpenMemory: () => void; onSaved: (episode: Episode) => void; onDeleted: () => void; onError: (value: string) => void; onEscalationChanged: (updated: VeterinaryEscalation) => void };
 
-function EpisodePanel({ episode, state, mode, error, onBack, onRetry, onEdit, onDelete, onSchedule, onOpenRelated, onOpenMemory, onSaved, onDeleted, onError, onEscalationChanged }: PanelProps) {
-  if (state === "loading") return <section><button onClick={onBack}>返回 Timeline</button><p role="status">正在读取详情…</p></section>;
-  if (state === "error" || !episode) return <section><button onClick={onBack}>返回 Timeline</button><div role="alert"><p>暂时无法读取记录详情。</p><button onClick={onRetry}>重试</button></div></section>;
+function EpisodePanel({ episode, state, mode, error, aiAnalysisEnabled, onBack, onRetry, onEdit, onDelete, onSchedule, onOpenRelated, onOpenMemory, onSaved, onDeleted, onError, onEscalationChanged }: PanelProps) {
+  if (state === "loading") return <section><button className="episode-panel__back" onClick={onBack}>返回足迹</button><p role="status">正在读取详情…</p></section>;
+  if (state === "error" || !episode) return <section><button className="episode-panel__back" onClick={onBack}>返回足迹</button><div role="alert"><p>暂时无法读取记录详情。</p><button onClick={onRetry}>重试</button></div></section>;
   if (mode === "edit") return <EpisodeEdit episode={episode} error={error} onCancel={() => onSaved(episode)} onSaved={onSaved} onError={onError} />;
   if (mode === "delete") return <DeleteConfirm episode={episode} error={error} onCancel={() => onSaved(episode)} onDeleted={onDeleted} onError={onError} />;
   if (mode === "schedule") return <ScheduleFollowUp episode={episode} onCancel={() => onSaved(episode)} onScheduled={async () => onSaved(await getEpisode(episode.id))} />;
   const hasFollowUpHistory = Boolean(episode.result_of_follow_up || episode.scheduled_follow_ups?.length);
   return <section className="episode-panel" aria-labelledby="episode-detail-title">
-    <button onClick={onBack}>返回 Timeline</button><p className="eyebrow">EPISODE DETAIL</p><h2 id="episode-detail-title">记录详情</h2>
-    <Detail title="原始输入"><p>{episode.raw_owner_input}</p></Detail>
-    <Detail title="发生了什么"><small>Observation</small>{episode.observations.map((item) => <p key={item.id}>{item.description}</p>)}</Detail>
-    <Detail title="你的理解"><small>Owner Interpretation</small>{episode.owner_interpretations.length ? episode.owner_interpretations.map((item) => <p key={item.id}>{item.interpretation}</p>) : <p>未填写主人解释</p>}</Detail>
-    <Detail title="结构化背景"><dl><dt>发生时间</dt><dd>{new Date(episode.happened_at).toLocaleString()}</dd><dt>更新时间</dt><dd>{new Date(episode.updated_at).toLocaleString()}</dd><dt>类型</dt><dd>{episodeTypeLabel(episode.episode_type)}</dd><dt>地点</dt><dd>{episode.location || "未填写"}</dd><dt>触发背景</dt><dd>{episode.trigger_context || "未填写"}</dd><dt>Context</dt><dd>{episode.context ? JSON.stringify(episode.context) : "未填写"}</dd></dl></Detail>
-    <Detail title="人工 Safety Check"><p>{episode.safety_check?.result || "未进行"}</p>{episode.safety_check?.danger_signals.map((signal) => <p key={signal}>{signal}</p>)}</Detail>
+    <button className="episode-panel__back" onClick={onBack}>返回足迹</button><p className="eyebrow">那一天的记录</p><h2 id="episode-detail-title">记录详情</h2>
+    <Detail title="当时记下的话"><p>{episode.raw_owner_input}</p></Detail>
+    <Detail title="看到的事实">{episode.observations.length ? episode.observations.map((item) => <p key={item.id}>{item.description}</p>) : <p>这次没有另外补充事实。</p>}</Detail>
+    <Detail title="当时的理解">{episode.owner_interpretations.length ? episode.owner_interpretations.map((item) => <p key={item.id}>{item.interpretation}</p>) : <p>这次没有填写个人理解。</p>}</Detail>
+    <Detail title="时间与情境"><dl><dt>发生时间</dt><dd>{new Date(episode.happened_at).toLocaleString()}</dd><dt>记录类型</dt><dd>{episodeTypeLabel(episode.episode_type)}</dd><dt>地点</dt><dd>{episode.location || "未填写"}</dd><dt>当时发生的背景</dt><dd>{episode.trigger_context || "未填写"}</dd></dl></Detail>
+    <Detail title="安全确认"><p>{episode.safety_check?.result === "NORMAL" ? "未发现所列紧急情况" : episode.safety_check?.result === "ESCALATE_TO_VET" ? "建议尽快联系兽医" : "未进行"}</p>{episode.safety_check?.danger_signals.map((signal) => <p key={signal}>{signal}</p>)}</Detail>
     {episode.veterinary_escalations?.length > 0 && <VeterinaryEscalationPanel episode={episode} onChanged={onEscalationChanged} />}
-    <UnderstandingPanel episode={episode} onOpenMemory={onOpenMemory} />
-    <Detail title="Evidence 来源信息">{episode.evidence_references?.length ? episode.evidence_references.map((item) => <p key={item.id}>{item.source_type} · {item.field_path} · {new Date(item.observed_at).toLocaleString()}</p>) : <p>暂无来源记录</p>}</Detail>
-    <Detail title="Observation Plan">{episode.plan_links?.length ? episode.plan_links.map((item) => <p key={item.id}>关联计划 #{item.plan_id}</p>) : <p>未关联观察计划</p>}</Detail>
+    <UnderstandingPanel episode={episode} aiAnalysisEnabled={aiAnalysisEnabled} onOpenMemory={onOpenMemory} />
+    <AssistantGuidancePanel episode={episode} enabled={aiAnalysisEnabled} />
+    <EducationalGuidancePanel episode={episode} />
+    <MediaPanel episodeId={episode.id} />
     <Detail title="复评关系">{episode.result_of_follow_up && <p><button onClick={() => onOpenRelated(episode.result_of_follow_up!.source_episode_id)}>查看原记录</button></p>}{episode.scheduled_follow_ups?.length ? episode.scheduled_follow_ups.map((item) => <p key={item.id}>{new Date(item.scheduled_at).toLocaleString()} · {item.status}{item.result_episode_id && <button onClick={() => onOpenRelated(item.result_episode_id!)}>查看复评记录</button>}</p>) : <p>尚未安排复评</p>}</Detail>
-    {hasFollowUpHistory && <p className="safety-note">这条记录已有复评关系。为保留可追溯历史，不能删除。</p>}
-    {error && <p role="alert" className="form-error">{error}</p>}<div className="panel-actions episode-actions"><button onClick={onSchedule}>安排复评</button><button onClick={onEdit}>编辑记录</button><button className="danger-button" disabled={hasFollowUpHistory} onClick={onDelete}>删除记录</button></div>
+    <details className="card revision-history"><summary>修改历史（{episode.revisions?.length || 0} 个版本）</summary>{episode.revisions?.map((revision) => <article key={revision.id}><strong>版本 {revision.revision_number} · {revisionSourceLabels[revision.source] || "记录更新"}</strong><p>{new Date(revision.created_at).toLocaleString()}{revision.change_summary ? ` · ${revision.change_summary}` : ""}</p><p>{String(revision.snapshot.raw_owner_input || "未保留原话")}</p></article>)}</details>
+    <details className="card technical-details"><summary>技术与来源信息</summary><dl><dt>记录编号</dt><dd>{episode.id}</dd><dt>创建时间</dt><dd>{new Date(episode.created_at).toLocaleString()}</dd><dt>最后更新时间</dt><dd>{new Date(episode.updated_at).toLocaleString()}</dd><dt>结构化背景</dt><dd>{episode.context ? JSON.stringify(episode.context) : "未填写"}</dd></dl><h4>来源记录</h4>{episode.evidence_references?.length ? episode.evidence_references.map((item) => <p key={item.id}>{item.source_type} · {item.field_path} · {new Date(item.observed_at).toLocaleString()}</p>) : <p>暂无来源记录</p>}<h4>观察计划</h4>{episode.plan_links?.length ? episode.plan_links.map((item) => <p key={item.id}>计划 #{item.plan_id}</p>) : <p>未关联观察计划</p>}</details>
+    {hasFollowUpHistory && <p className="safety-note">这条记录已有复评关系。删除会清除记录内容，并仅保留不可访问的最小关联占位。</p>}
+    {error && <p role="alert" className="form-error">{error}</p>}<div className="panel-actions episode-actions"><button onClick={onSchedule}>安排复评</button><button onClick={onEdit}>编辑记录</button><button className="danger-button" onClick={onDelete}>删除记录</button></div>
   </section>;
 }
 
@@ -143,7 +177,7 @@ function VeterinaryEscalationPanel({ episode, onChanged }: { episode: Episode; o
     catch { setError("更新兽医升级状态失败，原状态仍然保留。请重试。"); }
     finally { setSubmittingId(null); }
   }
-  return <div className="danger-panel" role="alert"><strong>Veterinary Escalation</strong>{episode.veterinary_escalations.map((item) => <div key={item.id}><p>{item.reason}（{item.status}）</p>{item.vet_brief && <p>给兽医的摘要：{item.vet_brief}</p>}<div className="panel-actions">{item.status === "OPEN" && <button disabled={submittingId === item.id} onClick={() => void transition(item.id, "SHARED_WITH_VET")}>标记已分享给兽医</button>}{item.status !== "CLOSED" && <button disabled={submittingId === item.id} onClick={() => void transition(item.id, "CLOSED")}>关闭升级</button>}</div></div>)}<p>Relapaw 不进行诊断，也不替代兽医。</p>{error && <p className="form-error">{error}</p>}</div>;
+  return <div className="danger-panel" role="alert"><strong>需要兽医关注</strong>{episode.veterinary_escalations.map((item) => <div key={item.id}><p>{item.reason}（{item.status === "OPEN" ? "待处理" : item.status === "SHARED_WITH_VET" ? "已分享给兽医" : "已关闭"}）</p>{item.vet_brief && <p>给兽医的摘要：{item.vet_brief}</p>}<div className="panel-actions">{item.status === "OPEN" && <button disabled={submittingId === item.id} onClick={() => void transition(item.id, "SHARED_WITH_VET")}>标记已分享给兽医</button>}{item.status !== "CLOSED" && <button disabled={submittingId === item.id} onClick={() => void transition(item.id, "CLOSED")}>关闭提醒</button>}</div></div>)}<p>Relapaw 不进行诊断，也不替代兽医。</p>{error && <p className="form-error">{error}</p>}</div>;
 }
 
 function Detail({ title, children }: { title: string; children: ReactNode }) { return <section className="card"><h3>{title}</h3>{children}</section>; }
@@ -159,7 +193,7 @@ function ScheduleFollowUp({ episode, onCancel, onScheduled }: { episode: Episode
     if (!scheduledAt || Number.isNaN(date.getTime()) || date <= new Date()) { setError("请选择当前时间之后的复评时间。"); return; }
     setSubmitting(true); try { await scheduleFollowUp(episode.id, date.toISOString()); await onScheduled(); } catch { setError("安排复评失败，请保留当前选择并重试。"); } finally { setSubmitting(false); }
   }
-  return <section><h2>安排复评</h2><p>复评会创建一条新记录，不会覆盖当前 Episode。</p><div className="filter-chips" aria-label="复评快捷时间"><button onClick={() => preset(2)}>2 小时后</button><button onClick={() => preset(24)}>次日</button><button onClick={() => preset(72)}>3 天后</button></div><form onSubmit={(event) => void submit(event)}><label>自定义复评时间<input aria-label="自定义复评时间" type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} /></label>{error && <p role="alert" className="form-error">{error}</p>}<div className="panel-actions"><button type="button" onClick={onCancel}>取消</button><button className="primary" disabled={submitting}>{submitting ? "正在安排…" : "确认安排"}</button></div></form></section>;
+  return <section><h2>安排复评</h2><p>复评会创建一条新记录，不会覆盖当前内容或修改历史。</p><div className="filter-chips" aria-label="复评快捷时间"><button onClick={() => preset(2)}>2 小时后</button><button onClick={() => preset(24)}>次日</button><button onClick={() => preset(72)}>3 天后</button></div><form onSubmit={(event) => void submit(event)}><label>自定义复评时间<input aria-label="自定义复评时间" type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} /></label>{error && <p role="alert" className="form-error">{error}</p>}<div className="panel-actions"><button type="button" onClick={onCancel}>取消</button><button className="primary" disabled={submitting}>{submitting ? "正在安排…" : "确认安排"}</button></div></form></section>;
 }
 
 function EpisodeEdit({ episode, error, onCancel, onSaved, onError }: { episode: Episode; error: string; onCancel: () => void; onSaved: (episode: Episode) => void; onError: (value: string) => void }) {
@@ -174,28 +208,29 @@ function EpisodeEdit({ episode, error, onCancel, onSaved, onError }: { episode: 
   const [frequency, setFrequency] = useState(episode.frequency_count?.toString() || "");
   const [intensity, setIntensity] = useState(episode.intensity?.toString() || "");
   const [context, setContext] = useState(episode.context ? JSON.stringify(episode.context, null, 2) : "");
+  const [changeSummary, setChangeSummary] = useState("");
   const [submitting, setSubmitting] = useState(false);
   async function submit(event: FormEvent) {
     event.preventDefault(); onError("");
-    if (!raw.trim() || observations.length === 0 || observations.some((item) => !item.description.trim()) || !episodeType.trim()) { onError("原始输入、每条 Observation 和记录类型为必填项。"); return; }
+    if (!raw.trim() || observations.some((item) => !item.description.trim()) || !episodeType.trim()) { onError("当时记下的话、每条已添加的事实和记录类型为必填项。"); return; }
     let parsedContext: Record<string, unknown> | null = null;
     try { parsedContext = context.trim() ? JSON.parse(context) : null; if (parsedContext !== null && (Array.isArray(parsedContext) || typeof parsedContext !== "object")) throw new Error(); }
     catch { onError("结构化背景必须是有效的 JSON 对象。"); return; }
     const numberOrNull = (value: string) => value === "" ? null : Number(value);
-    const payload: EpisodeUpdate = { happened_at: new Date(happened).toISOString(), episode_type: episodeType.trim(), raw_owner_input: raw.trim(), context: parsedContext, duration_seconds: numberOrNull(duration), frequency_count: numberOrNull(frequency), intensity: numberOrNull(intensity), location: location.trim() || null, trigger_context: trigger.trim() || null, observations: observations.map(({ behavior_type, description, source_type, confidence, measured_value, unit }) => ({ behavior_type, description: description.trim(), source_type, confidence, measured_value, unit })), owner_interpretations: interpretations.filter((item) => item.trim()).map((interpretation) => ({ interpretation: interpretation.trim() })) };
+    const payload: EpisodeUpdate = { happened_at: new Date(happened).toISOString(), episode_type: episodeType.trim(), raw_owner_input: raw.trim(), context: parsedContext, duration_seconds: numberOrNull(duration), frequency_count: numberOrNull(frequency), intensity: numberOrNull(intensity), location: location.trim() || null, trigger_context: trigger.trim() || null, observations: observations.map(({ behavior_type, description, source_type, confidence, measured_value, unit }) => ({ behavior_type, description: description.trim(), source_type, confidence, measured_value, unit })), owner_interpretations: interpretations.filter((item) => item.trim()).map((interpretation) => ({ interpretation: interpretation.trim() })), change_summary: changeSummary.trim() || undefined };
     setSubmitting(true); try { onSaved(await updateEpisode(episode.id, payload)); } catch { onError("保存失败，输入仍保留。请检查网络后重试。"); } finally { setSubmitting(false); }
   }
-  return <section><h2>编辑记录</h2><p className="notice">人工 Safety Check 与 Veterinary Escalation 是历史记录，本页不会修改它们。</p><form className="editor-form" onSubmit={(event) => void submit(event)}>
+  return <section><h2>编辑记录</h2><p className="notice">安全确认和兽医提醒属于历史记录，本页不会修改；保存时会新增一个版本，旧内容不会被覆盖。</p><form className="editor-form" onSubmit={(event) => void submit(event)}>
     <label>发生时间<input aria-label="发生时间" type="datetime-local" value={happened} onChange={(event) => setHappened(event.target.value)} /></label><label>记录类型<input aria-label="记录类型" value={episodeType} onChange={(event) => setEpisodeType(event.target.value)} /></label>
-    <label>原始输入<textarea aria-label="原始输入" value={raw} onChange={(event) => setRaw(event.target.value)} /></label>
-    <fieldset className="form-section"><legend>Observation</legend>{observations.map((item, index) => <div key={item.id || index}><label>Observation {index + 1}<textarea aria-label={index === 0 ? "Observation" : `Observation ${index + 1}`} value={item.description} onChange={(event) => setObservations((current) => current.map((value, itemIndex) => itemIndex === index ? { ...value, description: event.target.value } : value))} /></label>{observations.length > 1 && <button type="button" onClick={() => setObservations((current) => current.filter((_, itemIndex) => itemIndex !== index))}>删除 Observation {index + 1}</button>}</div>)}<button type="button" onClick={() => setObservations((current) => [...current, { id: 0, episode_id: episode.id, behavior_type: "manual_observation", description: "", source_type: "owner_direct", confidence: null, measured_value: null, unit: null, created_at: "", updated_at: "" }])}>添加 Observation</button></fieldset>
-    <fieldset className="form-section"><legend>Owner Interpretation</legend>{interpretations.map((item, index) => <div key={index}><label>Owner Interpretation {index + 1}<textarea aria-label={index === 0 ? "Owner Interpretation" : `Owner Interpretation ${index + 1}`} value={item} onChange={(event) => setInterpretations((current) => current.map((value, itemIndex) => itemIndex === index ? event.target.value : value))} /></label><button type="button" onClick={() => setInterpretations((current) => current.filter((_, itemIndex) => itemIndex !== index))}>删除 Owner Interpretation {index + 1}</button></div>)}<button type="button" onClick={() => setInterpretations((current) => [...current, ""])}>添加 Owner Interpretation</button></fieldset>
+    <label>当时记下的话<textarea aria-label="当时记下的话" value={raw} onChange={(event) => setRaw(event.target.value)} /></label>
+    <fieldset className="form-section"><legend>看到的事实（可选）</legend>{observations.map((item, index) => <div key={item.id || index}><label>事实 {index + 1}<textarea aria-label={`事实 ${index + 1}`} value={item.description} onChange={(event) => setObservations((current) => current.map((value, itemIndex) => itemIndex === index ? { ...value, description: event.target.value } : value))} /></label><button type="button" onClick={() => setObservations((current) => current.filter((_, itemIndex) => itemIndex !== index))}>删除事实 {index + 1}</button></div>)}<button type="button" onClick={() => setObservations((current) => [...current, { id: 0, episode_id: episode.id, behavior_type: "manual_observation", description: "", source_type: "owner_direct", confidence: null, measured_value: null, unit: null, created_at: "", updated_at: "" }])}>添加事实</button></fieldset>
+    <fieldset className="form-section"><legend>当时的理解（可选）</legend>{interpretations.map((item, index) => <div key={index}><label>理解 {index + 1}<textarea aria-label={`理解 ${index + 1}`} value={item} onChange={(event) => setInterpretations((current) => current.map((value, itemIndex) => itemIndex === index ? event.target.value : value))} /></label><button type="button" onClick={() => setInterpretations((current) => current.filter((_, itemIndex) => itemIndex !== index))}>删除理解 {index + 1}</button></div>)}<button type="button" onClick={() => setInterpretations((current) => [...current, ""])}>添加理解</button></fieldset>
     <div className="form-triple"><label>持续秒数<input type="number" min="0" value={duration} onChange={(event) => setDuration(event.target.value)} /></label><label>发生次数<input type="number" min="1" value={frequency} onChange={(event) => setFrequency(event.target.value)} /></label><label>强度（1–5）<input type="number" min="1" max="5" value={intensity} onChange={(event) => setIntensity(event.target.value)} /></label></div>
-    <label>地点<input value={location} onChange={(event) => setLocation(event.target.value)} /></label><label>触发背景<textarea value={trigger} onChange={(event) => setTrigger(event.target.value)} /></label><label>结构化背景（JSON 对象）<textarea aria-label="结构化背景" value={context} onChange={(event) => setContext(event.target.value)} /></label>{error && <p role="alert" className="form-error">{error}</p>}<div className="panel-actions"><button type="button" onClick={onCancel}>取消</button><button className="primary" disabled={submitting}>{submitting ? "正在保存…" : "保存修改"}</button></div></form></section>;
+    <label>地点<input value={location} onChange={(event) => setLocation(event.target.value)} /></label><label>触发背景<textarea value={trigger} onChange={(event) => setTrigger(event.target.value)} /></label><label>这次修改了什么（可选）<input aria-label="修改说明" maxLength={500} value={changeSummary} onChange={(event) => setChangeSummary(event.target.value)} /></label><details className="advanced-fields"><summary>技术字段</summary><label>结构化背景（JSON 对象）<textarea aria-label="结构化背景" value={context} onChange={(event) => setContext(event.target.value)} /></label></details>{error && <p role="alert" className="form-error">{error}</p>}<div className="panel-actions"><button type="button" onClick={onCancel}>取消</button><button className="primary" disabled={submitting}>{submitting ? "正在保存…" : "保存并保留旧版本"}</button></div></form></section>;
 }
 
 function DeleteConfirm({ episode, error, onCancel, onDeleted, onError }: { episode: Episode; error: string; onCancel: () => void; onDeleted: () => void; onError: (value: string) => void }) {
   const [submitting, setSubmitting] = useState(false);
   async function remove() { setSubmitting(true); onError(""); try { await deleteEpisode(episode.id); onDeleted(); } catch { onError("删除失败，记录仍然保留。请重试。"); } finally { setSubmitting(false); } }
-  return <section role="dialog" aria-modal="true" aria-labelledby="delete-title"><h2 id="delete-title">确认删除这条记录？</h2><p>删除后，原始记录及关联的 Observation、Owner Interpretation、Safety Check、Veterinary Escalation、Evidence 来源和计划关联都会被移除，且当前无法恢复。</p>{error && <p role="alert" className="form-error">{error}</p>}<div className="panel-actions"><button onClick={onCancel}>取消删除</button><button className="danger-button" disabled={submitting} onClick={() => void remove()}>{submitting ? "正在删除…" : "确认删除"}</button></div></section>;
+  return <section role="dialog" aria-modal="true" aria-labelledby="delete-title"><h2 id="delete-title">确认删除这条记录？</h2><p>删除后，这条记录的原话、事实、理解、安全信息、来源、分析和修改历史都会被清除，且无法恢复。为维持已完成复评的引用完整性，系统可能仅保留不含内容且不可访问的占位记录。</p>{error && <p role="alert" className="form-error">{error}</p>}<div className="panel-actions"><button onClick={onCancel}>取消删除</button><button className="danger-button" disabled={submitting} onClick={() => void remove()}>{submitting ? "正在删除…" : "确认删除"}</button></div></section>;
 }

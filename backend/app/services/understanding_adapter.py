@@ -1,4 +1,3 @@
-import re
 from typing import Any, Protocol, runtime_checkable
 
 import openai
@@ -9,38 +8,25 @@ from app.core.config import settings
 from app.schemas.analysis import AdapterDescriptor, UnderstandingInput, UnderstandingOutput
 
 
-PROMPT_CONTRACT_VERSION = "text-understanding/v5-grounded-claims"
-SYSTEM_PROMPT = """You generate cautious, structured text-understanding proposals for a pet owner's recorded Episode.
+PROMPT_CONTRACT_VERSION = "text-understanding/v7-verbatim-fact-extraction"
+SYSTEM_PROMPT = """You classify verbatim spans from a pet owner's raw text. Return strict JSON matching the supplied schema.
 
 Hard boundaries:
-- Return only claims that are possible explanations requiring user confirmation. Never present a claim as fact.
-- Each claim must explain the Episode's recorded observation or behavior itself. Do not make the owner's decision, concern, wording, or decision to contact a veterinarian the subject of a claim.
-- Do not merely restate or summarize the input. A claim must add a cautious, useful interpretation grounded in the recorded Episode.
-- Do not diagnose medical, behavioral, or psychological conditions. Do not recommend treatment, medication, dosage, or delaying veterinary care.
-- Keep Raw Input, Observation, and Owner Interpretation distinct. Owner Interpretation is the owner's hypothesis, not observed fact. It may only be cited as CONTEXT or LIMITS, never as SUPPORTS.
-- Cite only evidence_key values present in the supplied Episode input. Never invent or use outside evidence.
-- Every claim must include at least one evidence reference and at least one meaningful uncertainty.
-- Use LOW, MEDIUM, or HIGH only as qualitative confidence labels; do not produce numeric probabilities or scores.
-- If the evidence is limited or alternatives remain, say so explicitly in uncertainties.
-- Match the natural language used by the owner input for all human-readable statements and uncertainty descriptions. Keep enum and contract field values unchanged.
-- Context that was not recorded may appear only as explicitly missing or uncertain context, never as supporting evidence or an asserted cause.
-- Do not infer an unrecorded sensory trigger, intention, emotion, decision, safety assessment, vigilance cycle, or other internal state from behavior alone. Put such alternatives only in uncertainties.
-- Do not make a claim about whether the owner's hypothesis aligns with the observation. Analyze the recorded behavior, not the quality of the owner's interpretation.
-- If no useful explanation can be grounded in recorded Evidence without relying on an unrecorded cause or internal state, return an empty claims list instead of speculating.
+- Use raw_owner_input as the only text source. Use observations and owner_interpretations only as category anchors; never copy text that is absent from raw_owner_input.
+- Each source_quote must be one exact, contiguous substring copied from raw_owner_input, preserving its wording. Never paraphrase, summarize, correct, translate, combine non-contiguous words, or add any character.
+- evidence_key must identify the supplied RAW_OWNER_INPUT evidence item. Never cite observation, owner-interpretation, or invented keys.
+- observation_candidates contains only spans describing directly observable action, position, count, duration, time, consumption, elimination, or other externally verifiable events.
+- owner_interpretations contains only spans where the owner explicitly states a belief, guess, meaning, cause, intention, emotion, diagnosis, or conclusion (for example, “我觉得…”, “可能…”, “I think…”, “maybe…”).
+- Each observation span must overlap the wording of a supplied observation after punctuation/spacing normalization. Each interpretation span must overlap a supplied owner_interpretation the same way. If a category has no supplied anchor, return an empty list for it.
+- Never convert an owner interpretation into an observation. Never infer an interpretation that the owner did not explicitly state.
+- Never add causes, stimuli, intent, emotion, diagnosis, treatment, safety status, or any fact absent from raw_owner_input.
+- Omit greetings, requests, and unrelated wording. If no span belongs in a category, return an empty list for that category.
+- Do not use external knowledge, retrieval, tools, images, hidden context, or the pet profile.
 - The SafetyCheck has already gated this request. Do not reinterpret or downgrade it.
-- Do not use external knowledge, retrieval, tools, images, or hidden context. Analyze only the supplied JSON.
 """
 
-_CJK = re.compile(r"[\u3400-\u9fff]")
-
-
 def _input_prompt(payload: UnderstandingInput) -> str:
-    language = "Chinese (zh)" if _CJK.search(payload.raw_owner_input) else "English (en)"
-    return (
-        f"Required language for every human-readable claim and uncertainty: {language}.\n"
-        "Episode input JSON:\n"
-        + payload.model_dump_json()
-    )
+    return "Episode input JSON:\n" + payload.model_dump_json()
 
 
 class AdapterError(Exception):

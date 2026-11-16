@@ -4,12 +4,15 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from app.api.deps import require_episode, require_pet
+from app.api.deps import require_csrf, require_current_user, require_episode, require_escalation, require_life_event, require_pet, require_plan
 from app.api.errors import APIError
+from app.core.config import settings
 from app.db.session import get_db
-from app.models import LifeEvent, ObservationPlan, ObservationPlanItem, PetBaseline, VeterinaryEscalation
+from app.models import LifeEvent, MediaAttachment, ObservationPlan, ObservationPlanItem, PetBaseline, User, VeterinaryEscalation
+from app.services.media_records import media_paths_for_record
+from app.services.media_storage import cleanup_path
 from app.schemas.resources import (
-    LifeEventCreate,
+    LifeEventCreate, LifeEventUpdate,
     LifeEventRead,
     ObservationPlanCreate,
     ObservationPlanRead,
@@ -33,8 +36,8 @@ def _comparable_utc(value):
 
 
 @router.get("/pets/{pet_id}/baseline", response_model=PetBaselineRead)
-def get_baseline(pet_id: int, db: Session = Depends(get_db)):
-    require_pet(db, pet_id)
+def get_baseline(pet_id: int, db: Session = Depends(get_db), user: User = Depends(require_current_user)):
+    require_pet(db, pet_id, user)
     baseline = db.scalar(select(PetBaseline).where(PetBaseline.pet_id == pet_id))
     if baseline is None:
         raise APIError(404, "PET_BASELINE_NOT_FOUND", "Pet baseline not found")
@@ -42,8 +45,8 @@ def get_baseline(pet_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/pets/{pet_id}/baseline", response_model=PetBaselineRead)
-def upsert_baseline(pet_id: int, payload: PetBaselineUpsert, db: Session = Depends(get_db)):
-    require_pet(db, pet_id)
+def upsert_baseline(pet_id: int, payload: PetBaselineUpsert, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
+    require_pet(db, pet_id, user, for_update=True)
     baseline = db.scalar(select(PetBaseline).where(PetBaseline.pet_id == pet_id))
     if baseline is None:
         baseline = PetBaseline(pet_id=pet_id, **payload.model_dump())
@@ -57,14 +60,14 @@ def upsert_baseline(pet_id: int, payload: PetBaselineUpsert, db: Session = Depen
 
 
 @router.get("/pets/{pet_id}/life-events", response_model=list[LifeEventRead])
-def list_life_events(pet_id: int, db: Session = Depends(get_db)):
-    require_pet(db, pet_id)
+def list_life_events(pet_id: int, db: Session = Depends(get_db), user: User = Depends(require_current_user)):
+    require_pet(db, pet_id, user)
     return list(db.scalars(select(LifeEvent).where(LifeEvent.pet_id == pet_id).order_by(LifeEvent.happened_at.desc(), LifeEvent.id.desc())).all())
 
 
 @router.post("/pets/{pet_id}/life-events", response_model=LifeEventRead, status_code=201)
-def create_life_event(pet_id: int, payload: LifeEventCreate, db: Session = Depends(get_db)):
-    require_pet(db, pet_id)
+def create_life_event(pet_id: int, payload: LifeEventCreate, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
+    require_pet(db, pet_id, user, for_update=True)
     event = LifeEvent(pet_id=pet_id, **payload.model_dump())
     db.add(event)
     db.commit()
@@ -72,14 +75,36 @@ def create_life_event(pet_id: int, payload: LifeEventCreate, db: Session = Depen
     return event
 
 
+@router.patch("/life-events/{event_id}", response_model=LifeEventRead)
+def update_life_event(event_id: int, payload: LifeEventUpdate, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
+    event = require_life_event(db, event_id, user, for_update=True)
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(event, key, value)
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+@router.delete("/life-events/{event_id}", status_code=204)
+def delete_life_event(event_id: int, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
+    event = require_life_event(db, event_id, user, for_update=True)
+    paths = media_paths_for_record(db, settings.media_dir, MediaAttachment.life_event_id, event.id)
+    try:
+        db.delete(event); db.commit()
+    except Exception:
+        db.rollback(); raise
+    for path in paths: cleanup_path(path, settings.media_dir)
+
+
 @router.get("/pets/{pet_id}/observation-plans", response_model=list[ObservationPlanRead])
-def list_observation_plans(pet_id: int, db: Session = Depends(get_db)):
-    require_pet(db, pet_id)
+def list_observation_plans(pet_id: int, db: Session = Depends(get_db), user: User = Depends(require_current_user)):
+    require_pet(db, pet_id, user)
     return list(db.scalars(select(ObservationPlan).where(ObservationPlan.pet_id == pet_id).options(joinedload(ObservationPlan.items)).order_by(ObservationPlan.id.desc())).unique().all())
 
 
 @router.get("/observation-plans/{plan_id}", response_model=ObservationPlanRead)
-def get_observation_plan(plan_id: int, db: Session = Depends(get_db)):
+def get_observation_plan(plan_id: int, db: Session = Depends(get_db), user: User = Depends(require_current_user)):
+    require_plan(db, plan_id, user)
     plan = db.scalar(select(ObservationPlan).where(ObservationPlan.id == plan_id).options(joinedload(ObservationPlan.items)))
     if plan is None:
         raise APIError(404, "OBSERVATION_PLAN_NOT_FOUND", "Observation plan not found")
@@ -87,8 +112,8 @@ def get_observation_plan(plan_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/pets/{pet_id}/observation-plans", response_model=ObservationPlanRead, status_code=201)
-def create_observation_plan(pet_id: int, payload: ObservationPlanCreate, db: Session = Depends(get_db)):
-    require_pet(db, pet_id)
+def create_observation_plan(pet_id: int, payload: ObservationPlanCreate, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
+    require_pet(db, pet_id, user, for_update=True)
     data = payload.model_dump(exclude={"items"})
     plan = ObservationPlan(pet_id=pet_id, **data)
     db.add(plan)
@@ -104,11 +129,9 @@ def create_observation_plan(pet_id: int, payload: ObservationPlanCreate, db: Ses
 
 
 @router.patch("/observation-plans/{plan_id}", response_model=ObservationPlanRead)
-def update_observation_plan(plan_id: int, payload: ObservationPlanUpdate, db: Session = Depends(get_db)):
-    plan = db.get(ObservationPlan, plan_id)
-    if plan is None:
-        raise APIError(404, "OBSERVATION_PLAN_NOT_FOUND", "Observation plan not found")
-    data = payload.model_dump(exclude_unset=True)
+def update_observation_plan(plan_id: int, payload: ObservationPlanUpdate, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
+    plan = require_plan(db, plan_id, user, for_update=True)
+    data = payload.model_dump(exclude_unset=True, exclude={"items"})
     if plan.status in {"COMPLETED", "CANCELLED"}:
         raise APIError(409, "OBSERVATION_PLAN_TERMINAL", "Completed or cancelled plans cannot be changed")
     next_status = data.get("status")
@@ -123,20 +146,26 @@ def update_observation_plan(plan_id: int, payload: ObservationPlanUpdate, db: Se
         raise APIError(422, "INVALID_PLAN_DATES", "end_at must be on or after start_at")
     for key, value in data.items():
         setattr(plan, key, value)
+    if payload.items is not None:
+        if not payload.items:
+            raise APIError(422, "OBSERVATION_PLAN_ITEMS_REQUIRED", "At least one observation item is required")
+        plan.items.clear()
+        db.flush()
+        plan.items = [ObservationPlanItem(plan_id=plan.id, sort_order=index, **item.model_dump()) for index, item in enumerate(payload.items)]
     db.commit()
     db.refresh(plan)
     return plan
 
 
 @router.get("/episodes/{episode_id}/veterinary-escalations", response_model=list[VeterinaryEscalationRead])
-def list_veterinary_escalations(episode_id: int, db: Session = Depends(get_db)):
-    require_episode(db, episode_id)
+def list_veterinary_escalations(episode_id: int, db: Session = Depends(get_db), user: User = Depends(require_current_user)):
+    require_episode(db, episode_id, user)
     return list(db.scalars(select(VeterinaryEscalation).where(VeterinaryEscalation.episode_id == episode_id).order_by(VeterinaryEscalation.id.desc())).all())
 
 
 @router.post("/episodes/{episode_id}/veterinary-escalations", response_model=VeterinaryEscalationRead, status_code=201)
-def create_veterinary_escalation(episode_id: int, payload: VeterinaryEscalationCreate, db: Session = Depends(get_db)):
-    require_episode(db, episode_id)
+def create_veterinary_escalation(episode_id: int, payload: VeterinaryEscalationCreate, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
+    require_episode(db, episode_id, user, for_update=True)
     if payload.status.value != "OPEN":
         raise APIError(409, "INVALID_VETERINARY_ESCALATION_TRANSITION", "Veterinary escalation must be created as OPEN")
     escalation = VeterinaryEscalation(episode_id=episode_id, **payload.model_dump(mode="json"))
@@ -147,10 +176,8 @@ def create_veterinary_escalation(episode_id: int, payload: VeterinaryEscalationC
 
 
 @router.patch("/veterinary-escalations/{escalation_id}", response_model=VeterinaryEscalationRead)
-def update_veterinary_escalation(escalation_id: int, payload: VeterinaryEscalationUpdate, db: Session = Depends(get_db)):
-    escalation = db.get(VeterinaryEscalation, escalation_id)
-    if escalation is None:
-        raise APIError(404, "VETERINARY_ESCALATION_NOT_FOUND", "Veterinary escalation not found")
+def update_veterinary_escalation(escalation_id: int, payload: VeterinaryEscalationUpdate, db: Session = Depends(get_db), user: User = Depends(require_current_user), _csrf=Depends(require_csrf)):
+    escalation = require_escalation(db, escalation_id, user, for_update=True)
     data = payload.model_dump(exclude_unset=True, mode="json")
     if escalation.status == "CLOSED":
         raise APIError(409, "VETERINARY_ESCALATION_CLOSED", "Closed veterinary escalations cannot be changed")

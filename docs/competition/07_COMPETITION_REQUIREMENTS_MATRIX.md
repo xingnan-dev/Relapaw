@@ -18,7 +18,7 @@
 |---|---|---|
 | 真实用户问题 | Observation 与 Interpretation 分离、Timeline 与 Follow-up | 比赛叙事与用户画像整理 |
 | AI 差异化 | Evidence/Uncertainty/Confirmation、失败审计、Safety short-circuit、版本化 Evaluation 与模型资格决定 | 更换模型后的重新资格评估属于后续独立工作 |
-| 工程完整性 | 前后端、迁移、测试、build、Git 历史 | PostgreSQL、部署、监控和恢复演练 |
+| 工程完整性 | 前后端、迁移、测试、build、Git 历史；本地演示 Batch 1 已建立默认关闭 AI 的能力边界 | 合成 seed、静态托管、launcher 和最终演示包 |
 | 安全负责 | 不诊断、不治疗、非 NORMAL 不调用、密钥边界、版本化 Safety/Evaluation 数据集 | 生产监控与漂移检测 |
 | 人机协作 | 真实 REJECTED Claim、三轮 Prompt 迭代、最终 `NOT_QUALIFIED` 人工决定 | 最终演示素材整理 |
 | 展示质量 | 核心路径可运行；首次引导、建档、页面职责和主任务跳转已完成多轮人工精修；前端 69 项与后端 114 项测试通过 | 其余深层页面最终响应式人工验收、正式 Demo 视频 |
@@ -41,8 +41,8 @@ Phase 3 的四个 Slice 已实现、自动回归、人工验收并推送，阶�
 
 ## 当前结论
 
-比赛要求已经进入固定项目顺序和日常开发流程，而不是留到最后补写。当前完成的是“可持续收集证据的框架”，并不等于最终提交材料已经完成。项目当前位于完整 UI/UX 与品牌精修的产品结构收口阶段；每个后续实施批次都必须同步更新工具用途、真实交互案例、Git 证据和第三方来源，之后才进入部署、演示材料与 Release Candidate。
+比赛要求已经进入固定项目顺序和日常开发流程，而不是留到最后补写。当前完成的是“可持续收集证据的框架”，并不等于最终提交材料已经完成。项目当前位于本地演示运行包阶段；Batch 1 已完成自动回归，后续仍需合成 seed、静态托管、launcher、人工验收和提交授权。每个实施批次必须同步更新工具用途、真实交互案例、Git 证据和第三方来源，之后才进入演示材料与 Release Candidate。
 
 人工验收：用户于 2026-10-11 确认本阶段框架通过。该确认不代表最终比赛材料、演示资产或 Release Candidate 已完成。
 
-提交就绪状态的单一检查入口为 `09_SUBMISSION_READINESS_CHECKLIST.md`。该清单只汇总证据和门禁，不改变 `docs/PROJECT_EXECUTION_GUIDE.md` 中“完整 UI/UX 与品牌精修”为当前阶段的顺序。
+提交就绪状态的单一检查入口为 `09_SUBMISSION_READINESS_CHECKLIST.md`。该清单只汇总证据和门禁，不改变 `docs/PROJECT_EXECUTION_GUIDE.md` 中“本地演示运行包”为当前阶段的顺序。

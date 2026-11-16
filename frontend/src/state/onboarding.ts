@@ -1,9 +1,9 @@
-const ONBOARDING_KEY = "relapaw.onboarding.completed";
+const LEGACY_ONBOARDING_KEY = "relapaw.onboarding.completed";
 
+/** Compatibility only for isolated component tests and pre-account Alpha browsers.
+ * Authenticated product flow always uses AuthSession.onboarding_complete.
+ */
 export function isOnboardingComplete(): boolean {
-  return localStorage.getItem(ONBOARDING_KEY) === "true";
-}
-
-export function completeOnboarding(): void {
-  localStorage.setItem(ONBOARDING_KEY, "true");
+  try { return localStorage.getItem(LEGACY_ONBOARDING_KEY) === "true"; }
+  catch { return false; }
 }

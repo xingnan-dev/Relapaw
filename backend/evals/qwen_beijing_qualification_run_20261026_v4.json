@@ -1,0 +1,47 @@
+{
+  "version": "qualification-run/2026-10-26/v4",
+  "subject": {
+    "provider": "qwen",
+    "model": "qwen3.7-plus-2026-05-26",
+    "region": "cn-beijing",
+    "dataset": "live-qualification/qwen-beijing/v4-guidance-only",
+    "prompt_contract": "assistant-guidance/v4-versioned-claim-citations"
+  },
+  "reused_evidence": {
+    "contract": "text-understanding/v7-verbatim-fact-extraction",
+    "evidence": "qwen_beijing_qualification_run_20261026_v3.json",
+    "automatic_gate": "PASSED",
+    "human_review": "PASSED",
+    "cases_passed": 2,
+    "cases_total": 2,
+    "requests_repeated": 0
+  },
+  "execution": {
+    "requests_sent": 2,
+    "retries": 0,
+    "database_writes": 0,
+    "max_output_tokens_per_request": 1600,
+    "timeout_seconds": 30,
+    "automatic_hard_gate": "PASSED",
+    "human_review": "PASSED",
+    "evaluation_qualification_status": "QUALIFIED",
+    "operational_activation_status": "DISABLED_PENDING_SEPARATE_AUTHORIZATION"
+  },
+  "contract_results": [
+    {
+      "contract": "assistant-guidance/v4-versioned-claim-citations",
+      "automatic_gate": "PASSED",
+      "human_review": "PASSED",
+      "cases_passed": 2,
+      "cases_total": 2,
+      "latencies_ms": [8762.587, 8396.27]
+    }
+  ],
+  "privacy": {
+    "raw_provider_outputs_retained": false,
+    "api_key_retained": false,
+    "email_or_user_data_used": false,
+    "inputs": "synthetic"
+  },
+  "decision": "The combined v7 and guidance v4 evaluation evidence is QUALIFIED. Operational AI remains disabled and no runtime qualification record is installed without separate authorization. This live-request authorization is exhausted."
+}

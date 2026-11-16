@@ -43,17 +43,24 @@ React + TypeScript + FastAPI + Pydantic + SQLAlchemy
 
 ## 近期执行顺序
 
+真实产品首发的用户、范围、流程、非目标与发布门禁以 [真实产品首发契约](LAUNCH_PRODUCT_SCOPE.md) 为准；当前实现差距与 P0 交付顺序见 [真实产品首发差距审计](LAUNCH_GAP_AUDIT.md)；外部多人 Beta 的候选身份方案见 [账号、身份与租户边界架构](P0_1_IDENTITY_TENANCY_ARCHITECTURE.md)，当前没有域名和发信邮箱，因此暂缓实施。比赛/演示版本与外部多人产品必须明确区分，不把已有实验实现自动视为首发承诺。
+
+当前比赛版本的发布形态冻结为 [本地可重复演示](DEMO_RELEASE_PROFILE.md)：使用合成数据、独立演示数据库、默认禁用运行时 AI，不接入真实外部用户。
+
+演示运行包的文件级改动、五个实施批次和验收矩阵见 [实施计划](DEMO_RUNTIME_IMPLEMENTATION_PLAN.md)。
+
 ```text
 Phase 0–3（已关闭）
   -> 比赛 AI Coding 证据框架（已验收）
   -> 轻量 Design System（已验收）
   -> Evaluation 与 Safety（已关闭；当前模型组合 NOT_QUALIFIED）
   -> 完整 UI/UX 与品牌精修（已完成人工验收，待授权提交）
-  -> 生产部署与可观测性（下一阶段）
+  -> 本地演示运行包（下一阶段）
   -> 比赛演示数据与材料
   -> Release Candidate 总验收
   -> 比赛提交与版本冻结
+  -> 外部多人 Beta 前：账号、隐私、生产部署与可观测性
   -> 赛后 Phase 4–6
 ```
 
-完整 UI/UX 与品牌精修必须建立在现有信息架构、安全边界和人工决定语义之上。当前进入产品结构收口：页面职责与入口审计 → 删除重复跳转和虚假交互 → 核心业务链路与深层状态 → 响应式/无障碍/视觉回归 → AI Review 与完整回归 → 人工验收和比赛证据同步。之后才进入生产部署、比赛演示材料和 Release Candidate；不提前进行 RAG、Agent、多模态、自动医疗判断或 Pet↔Pet 数据模型。
+完整 UI/UX 与品牌精修已经完成人工验收。当前先完成本地演示运行包：版本化合成数据、独立演示数据库、安全 reset、构建后前端、启动预检与默认关闭运行时 AI；之后进入比赛演示材料和 Release Candidate。账号、隐私、PostgreSQL 与公网生产部署移动到外部多人 Beta 前；不提前进行 RAG、Agent、多模态、自动医疗判断或 Pet↔Pet 数据模型。
