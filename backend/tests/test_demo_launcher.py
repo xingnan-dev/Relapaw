@@ -1,4 +1,5 @@
 import subprocess
+from shutil import which
 from pathlib import Path
 
 
@@ -8,13 +9,15 @@ GUIDE = ROOT / "docs" / "DEMO_OPERATOR_GUIDE.md"
 
 
 def test_launcher_is_valid_powershell():
+    powershell = which("pwsh") or which("powershell.exe")
+    assert powershell is not None, "PowerShell is required to validate the demo launcher"
     command = (
         "$source = Get-Content -LiteralPath '"
         + str(SCRIPT).replace("'", "''")
         + "' -Raw; [void][scriptblock]::Create($source)"
     )
     result = subprocess.run(
-        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+        [powershell, "-NoProfile", "-NonInteractive", "-Command", command],
         capture_output=True,
         text=True,
         check=False,
