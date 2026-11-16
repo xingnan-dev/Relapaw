@@ -868,7 +868,7 @@ class BaselineSnapshot(Base):
             "pet_id", "window", "as_of", "algorithm_version", "source_fingerprint",
             name="uq_baseline_snapshot_identity",
         ),
-        CheckConstraint("window IN ('7d', '30d', '90d', 'all')", name="ck_baseline_snapshot_window"),
+        CheckConstraint("\"window\" IN ('7d', '30d', '90d', 'all')", name="ck_baseline_snapshot_window"),
         CheckConstraint(
             "status IN ('READY', 'INSUFFICIENT_DATA', 'EMPTY')",
             name="ck_baseline_snapshot_status",
