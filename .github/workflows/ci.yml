@@ -3,7 +3,7 @@ name: ci
 on:
   pull_request:
   push:
-    branches: [post-competition]
+    branches: [main, post-competition]
 
 jobs:
   verify:
@@ -49,7 +49,7 @@ jobs:
           alembic upgrade 20261020_0009
           python -m app.demo.assign_legacy_owner --allow-legacy-demo-data
           alembic upgrade head
-          python -c "from sqlalchemy import create_engine,text; from app.core.config import settings; engine=create_engine(settings.database_url); connection=engine.connect(); assert connection.scalar(text(\"SELECT version_num FROM alembic_version\")) == '20261020_0014'; assert connection.scalar(text(\"SELECT count(*) FROM pets WHERE owner_user_id IS NULL\")) == 0; assert connection.scalar(text(\"SELECT count(*) FROM owner_profiles WHERE user_id IS NULL\")) == 0; assert connection.scalar(text(\"SELECT count(DISTINCT user_id) FROM owner_profiles\")) == 2; assert connection.scalar(text(\"SELECT count(*) FROM users WHERE status = 'DISABLED'\")) >= 2; connection.close()"
+          python -c "from sqlalchemy import create_engine,text; from app.core.config import settings; engine=create_engine(settings.database_url); connection=engine.connect(); assert connection.scalar(text(\"SELECT version_num FROM alembic_version\")) == '20261026_0027'; assert connection.scalar(text(\"SELECT count(*) FROM pets WHERE owner_user_id IS NULL\")) == 0; assert connection.scalar(text(\"SELECT count(*) FROM owner_profiles WHERE user_id IS NULL\")) == 0; assert connection.scalar(text(\"SELECT count(DISTINCT user_id) FROM owner_profiles\")) == 2; assert connection.scalar(text(\"SELECT count(*) FROM users WHERE status = 'DISABLED'\")) >= 2; connection.close()"
       - name: Frontend dependencies
         working-directory: frontend
         run: npm ci
